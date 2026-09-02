@@ -1,0 +1,98 @@
+# Tasks
+
+Worked one at a time. Plan and rationale live in `claude/job_search/retrieval_stack_project.md`
+in the "Random" Claude project.
+
+Legend: `[ ]` todo · `[~]` in progress · `[x]` done
+
+---
+
+## Phase 0 — Foundation
+
+- [ ] **0.1** Load arXiv ML abstracts (`CShorten/ML-ArXiv-Papers`), inspect fields
+- [ ] **0.2** Sample 10-20K abstracts, one abstract = one document; freeze sample to `data/` with a fixed seed
+- [ ] **0.3** Build the eval set: LLM-generate one research question per sampled abstract for ~300-500 abstracts
+  - ⚠️ **Generate questions; do not extract phrases.** Extraction leaks surface tokens to BM25
+  - [ ] Spot-check 20 by hand, record the reject rate
+  - [ ] Hard timebox: one hour
+- [ ] **0.4** Split eval set into fine-tune / held-out slices (must be **disjoint** — see 2b)
+- [ ] **0.5** Metrics harness: nDCG@10, Recall@10, MRR, with unit tests on a toy ranking
+
+## Phase 1 — Word2Vec from scratch (in-domain)
+
+- [ ] **1.1** Preprocess: tokenize, lowercase, strip punctuation
+- [ ] **1.2** Run `gensim.models.Phrases` for bigrams/trigrams (`reinforcement_learning`, `attention_mechanism`)
+- [ ] **1.3** Train `Word2Vec(sg=1, vector_size=300, window=5, min_count=5, negative=10, epochs=10)`
+- [ ] **1.4** Sanity check: nearest neighbours of `transformer`, `attention`, `diffusion`
+- [ ] **1.5** Document-level vectors: mean pooling **and** IDF-weighted pooling
+- [ ] **1.6** Three-way comparison on the same eval set:
+  - [ ] in-domain (arXiv-trained)
+  - [ ] out-of-domain (existing OpinRank model from ML-Cookbook)
+  - [ ] pretrained GoogleNews vectors
+  - [ ] **Finding to test: does domain beat scale for static embeddings?**
+
+## Phase 2 — Embedding comparison
+
+- [ ] **2.1** BM25 baseline (`rank_bm25`)
+- [ ] **2.2** `all-MiniLM-L6-v2` and `all-mpnet-base-v2`
+- [ ] **2.3** MRL-capable model (`nomic-embed-text-v1.5` or `Qwen3-Embedding-0.6B`)
+- [ ] **2.4** Index in Qdrant (not only FAISS — the claim is *vector DB*)
+- [ ] **2.5** **MRL truncation sweep** 768 -> 512 -> 256 -> 128 -> 64
+  - [ ] Same sweep on non-MRL `all-mpnet-base-v2` as the control
+  - [ ] ⚠️ Renormalise after slicing; assert unit norm in the harness
+- [ ] **2.6** Hybrid: reciprocal rank fusion of BM25 + best dense; sweep the weight
+- [ ] **2.7** Systems numbers: index build time, index size, p50/p95 latency, $/1M embeddings
+
+### Phase 2b — Fine-tuning
+- [ ] **2b.1** Fine-tune a sentence-transformer on the domain pairs with `MultipleNegativesRankingLoss`
+- [ ] **2b.2** Evaluate on the **held-out** slice only
+- [ ] **2b.3** **Question answered: should you train your own embedding model for RAG?**
+
+### Phase 2c — Reranking
+- [ ] **2c.1** Cross-encoder rerank over top-50 (`bge-reranker-base`)
+- [ ] **2c.2** nDCG@10 before/after, and added p95 latency
+
+### Phase 2d — Scaling curve
+- [ ] **2d.1** Record index build time, size, p95 latency at 5K / 10K / 20K docs
+- [ ] **2d.2** Fit and extrapolate to 1M and 100M; write up the arithmetic
+
+## Phase 3 — Topic modelling as diagnostics
+
+- [ ] **3a** Does embedding choice change what you discover? BERTopic across Phase 2 models; NPMI, c_v, topic count, diversity, outlier rate
+- [ ] **3b** **Automatic failure taxonomy** — cluster failing queries, LLM-label the clusters
+- [ ] **3c** **Corpus coverage gaps** — query-topic density vs document-topic density
+- [ ] **3d** *(optional)* Temporal drift — topic distribution over arXiv publication dates
+
+## Phase 4 — RAG layer *(optional, separate weekend)*
+
+- [ ] **4.1** Retrieve top-k -> generate -> LLM-judge answer correctness and groundedness
+- [ ] **4.2** Sweep k = 1, 3, 5, 10 across retrieval methods
+- [ ] **4.3** **The experiment worth doing: does 256-dim truncation change *answer* quality, not just retrieval quality?**
+
+## Phase 5 — Write-up
+
+- [ ] **5.1** Charts: quality bar, latency-vs-quality scatter, MRL truncation curves, hybrid weight sweep
+- [ ] **5.2** Fill every `[TBD]` in the README with measured numbers
+- [ ] **5.3** "What surprised me" section
+- [ ] **5.4** Limitations section
+
+---
+
+## Scale notes — read-only, not built here
+
+At 10-20K documents none of this bites. Recorded because it is the interview territory, and because
+it is why the MRL work matters.
+
+| Corpus | Vectors @ 768d fp32 | + HNSW graph | Fits in RAM? |
+|---|---|---|---|
+| 1M | ~3 GB | ~4.5-6 GB | comfortably |
+| 100M | **~300 GB** | **~450-600 GB** | **no** |
+
+Levers at 100M, from ~300 GB: int8 -> ~75 GB · binary -> ~9.6 GB · MRL 768->256 -> ~100 GB ·
+MRL 256 + int8 -> ~25 GB. **At small scale truncation is an optimisation; at 100M it is what makes
+the system buildable.**
+
+Other things that break: HNSW build time (hours to days, parallelises badly); re-embedding as a
+migration project (100M x ~500 tokens = 50B tokens, ~$1,000 per full re-embed); HNSW deletes leaving
+tombstones; ANN recall silently degrading as N grows at fixed `ef_search`; and **filtered search** —
+pre-filtering disconnects the HNSW graph, post-filtering can return nothing.

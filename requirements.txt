@@ -1,0 +1,32 @@
+# core
+numpy>=1.26
+pandas>=2.2
+pyyaml>=6.0
+tqdm>=4.66
+
+# corpus + eval set
+datasets>=2.20
+
+# lexical baseline
+rank-bm25>=0.2.2
+
+# static embeddings (Phase 1)
+gensim>=4.3.3
+
+# dense embeddings (Phase 2)
+sentence-transformers>=3.0
+torch>=2.3
+
+# vector database (Phase 2)
+qdrant-client>=1.9
+
+# reranking (Phase 2c)
+FlagEmbedding>=1.2
+
+# topic modelling / diagnostics (Phase 3)
+bertopic>=0.16
+umap-learn>=0.5
+hdbscan>=0.8
+
+# charts
+matplotlib>=3.8

@@ -1,0 +1,40 @@
+seed: 13
+corpus:
+  dataset: CShorten/ML-ArXiv-Papers
+  sample_size: 20000          # NOT the full 117K - the comparison is the deliverable
+  text_field: abstract
+  frozen_path: data/corpus_sample.parquet
+evalset:
+  n_queries: 400
+  spot_check_n: 20
+  holdout_frac: 0.5           # disjoint fine-tune / eval split (see Phase 2b)
+  path: data/evalset.jsonl
+word2vec:
+  sg: 1
+  vector_size: 300
+  window: 5
+  min_count: 5
+  negative: 10
+  epochs: 10
+  use_phrases: true
+dense:
+  models:
+    - sentence-transformers/all-MiniLM-L6-v2
+    - sentence-transformers/all-mpnet-base-v2
+    - nomic-ai/nomic-embed-text-v1.5     # MRL-capable
+  mrl_model: nomic-ai/nomic-embed-text-v1.5
+  non_mrl_control: sentence-transformers/all-mpnet-base-v2
+  truncation_dims: [768, 512, 256, 128, 64]
+index:
+  backend: qdrant
+  url: http://localhost:6333
+  collection_prefix: rss
+hybrid:
+  method: rrf
+  rrf_k: 60
+  weight_sweep: [0.0, 0.25, 0.5, 0.75, 1.0]
+rerank:
+  model: BAAI/bge-reranker-base
+  top_n: 50
+metrics:
+  k_values: [1, 5, 10, 20]
