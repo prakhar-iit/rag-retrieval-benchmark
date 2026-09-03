@@ -1,4 +1,4 @@
-# retrieval-stack-study
+# rag-retrieval-benchmark
 
 Benchmarking retrieval approaches from BM25 and Word2Vec to modern embeddings, Matryoshka
 truncation and hybrid fusion — with topic-level failure diagnostics, on arXiv ML abstracts.
