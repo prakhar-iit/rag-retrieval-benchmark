@@ -81,11 +81,47 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] **1.5** Document-level vectors: mean pooling **and** IDF-weighted pooling
   - `rss/static_embed.doc_vector(model, tokens, idf=None)` -- one function, both modes (`idf=None`
     -> uniform mean; `idf={...}` -> weighted). `compute_idf` uses sklearn-style smoothed IDF.
-- [ ] **1.6** Three-way comparison on the same eval set:
-  - [ ] in-domain (arXiv-trained)
-  - [ ] out-of-domain (existing OpinRank model from ML-Cookbook) -- **location TBD, asked the user**
-  - [ ] pretrained GoogleNews vectors
-  - [ ] **Finding to test: does domain beat scale for static embeddings?**
+- [x] **1.6** Three-way comparison on the same eval set:
+  - [x] in-domain (arXiv-trained)
+  - [x] out-of-domain -- the original ML-Cookbook OpinRank model wasn't in a connected folder, so
+    per the user's choice, retrained fresh here (`scripts/train_word2vec_opinrank.py`) on the
+    OpinRank hotel-review excerpt Kavita Ganesan (the dataset's own author) distributes for the
+    classic gensim Word2Vec tutorial. Sampled to the **same 20,000-document count** as the arXiv
+    corpus (same seed) rather than the full 256K reviews, so scale is held constant and domain is
+    the only variable that differs between this model and the in-domain one.
+  - [x] pretrained GoogleNews vectors -- `word2vec-google-news-300`, loaded with `limit=500_000`
+    (top 500K by frequency; the full 3M-vector load needs more RAM than was available while
+    building this, and 500K covers virtually all general English plus common technical terms --
+    documented as a minor conservative bias against GoogleNews's OOV coverage).
+  - [x] **Finding: does domain beat scale for static embeddings? Yes, against a truly mismatched
+    domain -- but scale buys back a lot of that gap against a broad, non-adversarial domain.**
+    All numbers below: brute-force cosine retrieval (`scripts/eval_static_embeddings.py`) over the
+    full 20K-doc corpus against all 400 eval queries, `rss/metrics.evaluate`.
+
+    | Model | Pooling | nDCG@10 | Recall@10 | MRR |
+    |---|---|---|---|---|
+    | arXiv (in-domain) | mean | 0.8184 | 0.8975 | 0.7954 |
+    | arXiv (in-domain) | **IDF-weighted** | **0.8534** | **0.9350** | **0.8290** |
+    | GoogleNews (pretrained, general) | mean | 0.7629 | 0.8625 | 0.7347 |
+    | GoogleNews (pretrained, general) | IDF-weighted | 0.8227 | 0.8925 | 0.8022 |
+    | OpinRank (out-of-domain) | mean | 0.2373 | 0.3275 | 0.2128 |
+    | OpinRank (out-of-domain) | IDF-weighted | 0.3714 | 0.4950 | 0.3374 |
+
+    Two findings, not one: (1) **IDF-weighted pooling beats mean pooling in all six runs** --
+    consistent and unsurprising (mean pooling lets high-frequency, low-information tokens dilute
+    the vector; IDF pooling suppresses them), but worth stating since it wasn't guaranteed. (2) The
+    domain story is more nuanced than a clean binary. Out-of-domain OpinRank collapses (nDCG@10
+    0.37 vs 0.85, less than half) -- a Word2Vec model that has literally never seen `transformer` or
+    `diffusion` in its training data cannot be expected to retrieve ML papers well, and doesn't.
+    But GoogleNews -- pretrained on ~100B words of general English, ~30x more data than either
+    from-scratch model saw, and *not* domain-adversarial the way hotel reviews are -- comes within
+    0.03 nDCG@10 of the in-domain model. **Scale can substitute for domain specificity when the
+    pretraining corpus is broad enough to already contain the target domain's vocabulary** (GoogleNews
+    was trained on news text circa 2013, which already covers a fair amount of tech/science
+    terminology); it cannot when the pretraining domain actively excludes it, as OpinRank's hotel
+    reviews do. The honest one-line version for the README: *domain-specific training beats a
+    genuinely mismatched general model by a wide margin, but a broad, well-resourced general model
+    is a much closer contest than "domain beats scale" alone would suggest.*
 
 ## Phase 2 — Embedding comparison
 

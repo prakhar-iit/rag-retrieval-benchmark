@@ -105,8 +105,17 @@ def compute_idf(tokenized_docs: Iterable[Sequence[str]]) -> dict[str, float]:
     return {term: math.log(n_docs / (1 + df)) + 1.0 for term, df in doc_freq.items()}
 
 
-def doc_vector(model, tokens: Sequence[str], idf: Mapping[str, float] | None = None) -> np.ndarray:
+def doc_vector(
+    keyed_vectors, tokens: Sequence[str], idf: Mapping[str, float] | None = None
+) -> np.ndarray:
     """Pool token vectors into one document vector.
+
+    `keyed_vectors` is a gensim KeyedVectors instance -- for a Word2Vec model
+    trained in this module that's `model.wv`; a standalone pretrained
+    KeyedVectors load (e.g. GoogleNews vectors) is passed directly, since it
+    has no enclosing Word2Vec model. Both support `in` / `[...]` the same way,
+    which is all this function needs -- that's why task 1.6's three-way
+    comparison (in-domain, out-of-domain, pretrained) can share one code path.
 
     Mean pooling when `idf` is None (every in-vocabulary token weighted
     equally); IDF-weighted pooling when `idf` is supplied (rare/informative
@@ -116,12 +125,12 @@ def doc_vector(model, tokens: Sequence[str], idf: Mapping[str, float] | None = N
     Mean pooling is a weak sentence representation -- that weakness is the
     reason sentence-transformers exist, and showing it is part of the point.
     """
-    dim = model.wv.vector_size
+    dim = keyed_vectors.vector_size
     vecs = []
     weights = []
     for t in tokens:
-        if t in model.wv:
-            vecs.append(model.wv[t])
+        if t in keyed_vectors:
+            vecs.append(keyed_vectors[t])
             weights.append(idf.get(t, 1.0) if idf is not None else 1.0)
 
     if not vecs:

@@ -106,27 +106,27 @@ def test_compute_idf_term_in_every_doc_stays_positive():
 def test_doc_vector_mean_pooling_matches_manual_average():
     model = _toy_model()
     tokens = ["reinforcement", "learning"]
-    vec = doc_vector(model, tokens)
+    vec = doc_vector(model.wv, tokens)
     expected = np.mean([model.wv["reinforcement"], model.wv["learning"]], axis=0)
     np.testing.assert_allclose(vec, expected, rtol=1e-5)
 
 
 def test_doc_vector_skips_oov_tokens():
     model = _toy_model()
-    vec_with_oov = doc_vector(model, ["reinforcement", "learning", "zzz_not_in_vocab"])
-    vec_without_oov = doc_vector(model, ["reinforcement", "learning"])
+    vec_with_oov = doc_vector(model.wv, ["reinforcement", "learning", "zzz_not_in_vocab"])
+    vec_without_oov = doc_vector(model.wv, ["reinforcement", "learning"])
     np.testing.assert_allclose(vec_with_oov, vec_without_oov, rtol=1e-5)
 
 
 def test_doc_vector_all_oov_returns_zero_vector():
     model = _toy_model()
-    vec = doc_vector(model, ["zzz_nope", "zzz_also_nope"])
+    vec = doc_vector(model.wv, ["zzz_nope", "zzz_also_nope"])
     np.testing.assert_array_equal(vec, np.zeros(model.wv.vector_size, dtype=np.float32))
 
 
 def test_doc_vector_empty_tokens_returns_zero_vector():
     model = _toy_model()
-    vec = doc_vector(model, [])
+    vec = doc_vector(model.wv, [])
     np.testing.assert_array_equal(vec, np.zeros(model.wv.vector_size, dtype=np.float32))
 
 
@@ -134,8 +134,8 @@ def test_doc_vector_idf_weighting_differs_from_mean_pooling():
     model = _toy_model()
     tokens = ["reinforcement", "learning", "agent"]
     idf = {"reinforcement": 1.0, "learning": 1.0, "agent": 10.0}
-    mean_vec = doc_vector(model, tokens)
-    idf_vec = doc_vector(model, tokens, idf=idf)
+    mean_vec = doc_vector(model.wv, tokens)
+    idf_vec = doc_vector(model.wv, tokens, idf=idf)
     # Heavily up-weighting "agent" should pull the pooled vector toward it,
     # away from the uniform mean.
     assert not np.allclose(mean_vec, idf_vec)
@@ -145,6 +145,6 @@ def test_doc_vector_idf_weighting_reduces_to_mean_with_uniform_weights():
     model = _toy_model()
     tokens = ["reinforcement", "learning", "agent"]
     uniform_idf = {t: 1.0 for t in tokens}
-    mean_vec = doc_vector(model, tokens)
-    idf_vec = doc_vector(model, tokens, idf=uniform_idf)
+    mean_vec = doc_vector(model.wv, tokens)
+    idf_vec = doc_vector(model.wv, tokens, idf=uniform_idf)
     np.testing.assert_allclose(mean_vec, idf_vec, rtol=1e-5)
