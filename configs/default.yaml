@@ -31,7 +31,8 @@ dense:
   truncation_dims: [768, 512, 256, 128, 64]
 index:
   backend: qdrant
-  url: http://localhost:6333
+  url: http://localhost:6333  # real deployment target; unreachable here (no docker)
+  path: models/qdrant  # embedded/local mode actually used in this dev env -- see rss/index.py
   collection_prefix: rss
 hybrid:
   method: rrf

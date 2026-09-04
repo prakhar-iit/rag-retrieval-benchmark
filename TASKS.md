@@ -151,6 +151,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] **2.2** `all-MiniLM-L6-v2` and `all-mpnet-base-v2`
 - [ ] **2.3** MRL-capable model (`nomic-embed-text-v1.5` or `Qwen3-Embedding-0.6B`)
 - [ ] **2.4** Index in Qdrant (not only FAISS — the claim is *vector DB*)
+  - Infra done ahead of the vectors themselves, as prep while blocked on HF model access (below):
+    `docker` isn't installed on this dev machine, so `rss.index.build_qdrant`/`search` use Qdrant's
+    embedded/local mode (`QdrantClient(path=...)`) instead of the config's `index.url` server target
+    -- same client API and on-disk collection format, no server process. Confirmed working end-to-end
+    (create collection, upsert, query) and covered by 7 unit tests in `tests/test_index.py`
+    (exact-match retrieval, k-limiting, missing payloads, rebuild-at-same-path semantics, on-disk size,
+    deletion). `configs/default.yaml` gains `index.path`; `index.url` is kept as documentation of the
+    real deployment target. Actually indexing the corpus is still blocked on the dense vectors
+    themselves (2.2/2.3) — see the HF-access note there.
 - [ ] **2.5** **MRL truncation sweep** 768 -> 512 -> 256 -> 128 -> 64
   - [ ] Same sweep on non-MRL `all-mpnet-base-v2` as the control
   - [ ] ⚠️ Renormalise after slicing; assert unit norm in the harness
