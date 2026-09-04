@@ -6,6 +6,7 @@ venv/
 .ipynb_checkpoints/
 data/**
 !data/.gitkeep
+!data/evalset.jsonl
 models/
 *.model
 *.npy

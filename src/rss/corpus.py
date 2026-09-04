@@ -37,6 +37,22 @@ _DEGENERATE_ABSTRACT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Proceedings/front-matter volumes: real text, but not a research abstract with a
+# claim to ask a question about. ~23/117,592 in this corpus (checked by hand --
+# title_pat alone accounts for all of them; abstract_pat is defense-in-depth for
+# titles that don't start with the giveaway word). Tuned to avoid false positives
+# like a paper that merely *mentions* a "table of contents" feature or was
+# presented at a workshop as a "satellite event" -- both looked like proceedings
+# hits with a looser pattern and were not.
+_TITLE_FRONT_MATTER_RE = re.compile(
+    r"^\s*(?:proceedings|post-proceedings|preface|front matter|table of contents|call for papers)\b",
+    re.IGNORECASE,
+)
+_ABSTRACT_FRONT_MATTER_RE = re.compile(
+    r"contains the proceedings|this volume contains|invited talk by",
+    re.IGNORECASE,
+)
+
 
 def _sample_and_id(
     df: pd.DataFrame,
@@ -59,6 +75,9 @@ def _sample_and_id(
     df = df.drop_duplicates(subset=[text_field])
     df = df[~df[text_field].str.contains(_DEGENERATE_ABSTRACT_RE)]
     df = df[df[text_field].str.split().map(len) >= min_words]
+    if "title" in df.columns:
+        df = df[~df["title"].str.contains(_TITLE_FRONT_MATTER_RE)]
+        df = df[~df[text_field].str.contains(_ABSTRACT_FRONT_MATTER_RE)]
 
     if sample_size < len(df):
         df = df.sample(n=sample_size, random_state=seed)

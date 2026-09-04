@@ -84,6 +84,24 @@ def test_drops_degenerate_and_too_short_abstracts():
     assert "normal abstract" in out.iloc[0]["abstract"]
 
 
+def test_drops_proceedings_front_matter_but_keeps_papers_that_merely_mention_similar_terms():
+    df = pd.DataFrame({
+        "title": [
+            "Proceedings of the 40th International Workshop on Machine Learning",
+            "A Kernel Framework to Quantify a Model's Local Predictive Uncertainty",
+            "Automatic Lesion Segmentation and Classification in Fundus Images",
+        ],
+        "abstract": [
+            "This volume contains the proceedings of the workshop, held as a satellite event, with an invited talk by a keynote speaker.",
+            "We propose a kernel-based framework for predictive uncertainty quantification of a trained neural network using its internal representations.",
+            "Our method was evaluated according to the challenge rules; the challenge was organized as a satellite event of a major imaging symposium.",
+        ],
+    })
+    out = _sample_and_id(df, text_field="abstract", sample_size=10, seed=13, min_words=0)
+    assert len(out) == 2
+    assert "Proceedings" not in " ".join(out["title"])
+
+
 def test_missing_text_field_raises_with_helpful_message():
     df = pd.DataFrame({"summary": ["x"]})
     with pytest.raises(ValueError, match="not found"):

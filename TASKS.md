@@ -20,11 +20,34 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   - 20,000 documents sampled (seed=13), frozen to `data/corpus_sample.parquet`. Length distribution:
     min=15, median=165, mean=166.8, max=319 words. All doc_ids unique, zero nulls, zero degenerate
     rows remaining. `tests/test_corpus.py`, 12 passing.
-- [ ] **0.3** Build the eval set: LLM-generate one research question per sampled abstract for ~300-500 abstracts
+- [x] **0.3** Build the eval set: LLM-generate one research question per sampled abstract for ~300-500 abstracts
   - ⚠️ **Generate questions; do not extract phrases.** Extraction leaks surface tokens to BM25
-  - [ ] Spot-check 20 by hand, record the reject rate
-  - [ ] Hard timebox: one hour
-- [ ] **0.4** Split eval set into fine-tune / held-out slices (must be **disjoint** — see 2b)
+  - No API key was configured in the working environment, so all 400 questions were composed
+    directly (by Claude, reading each abstract) rather than via a scripted LLM call, in batches of
+    ~20 documents per round-trip. Selected via `select_docs_for_queries(df, 400, seed=13)` on the
+    post-filter 20K corpus.
+  - One workshop-proceedings volume was caught among the first 40 docs; added the proceedings/
+    front-matter filter to `corpus.py` (see 0.1/0.2) and re-sampled before continuing, so all 400
+    final docs are drawn from the filtered corpus.
+  - [x] Spot-check 20 by hand (`spot_check(records, n=20, seed=13)`) — all 20 are genuine content
+    paraphrases, not title rewrites; reject rate 0/20.
+  - Ran an automated title/query word-overlap heuristic (Jaccard-style, 4+ letter tokens minus
+    stopwords) as an extra self-check beyond the spot-check: 178/400 queries have >50% overlap with
+    their title's words, split almost evenly between the first 200 (90) and last 200 (88) composed.
+    Manual inspection at the halfway point found most of this is unavoidable domain-jargon overlap
+    on short titles (e.g. "Relative Flatness and Generalization"), not real extraction risk, with a
+    minority of genuinely close title-paraphrases. Left as-is per review at the 100-question and
+    140-question checkpoints — the rate did not visibly worsen or improve batch to batch, so this
+    looks like an inherent property of short, jargon-dense arXiv titles rather than a fixable
+    drafting issue.
+  - Time actually spent well exceeded the one-hour timebox (400 questions manually composed across
+    20 batches); noted here rather than re-scoped mid-flight since the user explicitly chose to push
+    through to completion.
+- [x] **0.4** Split eval set into fine-tune / held-out slices (must be **disjoint** — see 2b)
+  - `split(records, holdout_frac=0.5, seed=13)` — 200 finetune / 200 holdout, disjoint by
+    construction (single shuffle-and-partition over unique gold docs). Saved to `data/evalset.jsonl`
+    (400 lines, verified round-trip via `load_jsonl`). `tests/test_evalset.py`, 12 passing (31 total
+    across `test_metrics.py` + `test_corpus.py` + `test_evalset.py`).
 - [x] **0.5** Metrics harness: nDCG@10, Recall@10, MRR, with unit tests on a toy ranking
   - `rss/metrics.py` implemented; `tests/test_metrics.py`, 7 passing.
 
