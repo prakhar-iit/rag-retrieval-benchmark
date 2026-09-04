@@ -7,6 +7,7 @@ truncating a non-MRL model degrades badly -- running both is the experiment.
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import numpy as np
@@ -94,3 +95,57 @@ def assert_unit_norm(vectors: np.ndarray, tol: float = 1e-5) -> None:
             f"{int(bad.sum())} of {len(norms)} vectors are not unit-norm (tol={tol}); "
             f"first offending rows {list(bad_idx)} have norms {norms[bad_idx].tolist()}"
         )
+
+
+def encode_checkpointed(
+    model,
+    texts,
+    cache_dir,
+    prefix: str,
+    time_budget: float = 150.0,
+    chunk_size: int = 200,
+    batch_size: int = 32,
+):
+    """Encode `texts` in `chunk_size` pieces, saving each chunk to
+    `<cache_dir>/<prefix>_NNNN.npy` as soon as it's done, and stop once
+    `time_budget` seconds have elapsed.
+
+    Exists because encoding a large corpus on CPU can take longer than a
+    single process invocation is given to run (e.g. a shell tool's call
+    timeout) -- `model.encode(texts)` in one call either finishes or loses
+    ALL of its progress if cut off, since nothing is written to disk until
+    it returns. This checkpoints per-chunk instead, so re-calling with the
+    same `cache_dir`/`prefix` resumes from whatever chunks already exist
+    rather than re-encoding from scratch.
+
+    `model` is any object with an `.encode(texts, batch_size=..., ...)`
+    method returning an array-like of shape (len(texts), dim) -- duck-typed
+    so tests can pass a fake instead of a real sentence-transformers model.
+
+    Returns the full stacked (len(texts), dim) array once every chunk is
+    present; returns None if the time budget ran out first (some chunks
+    remain unencoded) -- callers should re-invoke (e.g. re-run the script)
+    to continue.
+    """
+    from pathlib import Path
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    texts = list(texts)
+    n_chunks = (len(texts) + chunk_size - 1) // chunk_size
+    t0 = time.time()
+
+    for i in range(n_chunks):
+        chunk_path = cache_dir / f"{prefix}_{i:04d}.npy"
+        if chunk_path.exists():
+            continue
+        if time.time() - t0 > time_budget:
+            return None
+        chunk_texts = texts[i * chunk_size : (i + 1) * chunk_size]
+        vecs = np.asarray(
+            model.encode(chunk_texts, batch_size=batch_size, show_progress_bar=False, convert_to_numpy=True)
+        ).astype(np.float32)
+        np.save(chunk_path, vecs)
+
+    chunks = [np.load(cache_dir / f"{prefix}_{i:04d}.npy") for i in range(n_chunks)]
+    return np.concatenate(chunks, axis=0)
