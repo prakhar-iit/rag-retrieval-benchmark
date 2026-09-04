@@ -28,7 +28,8 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from rss.corpus import load_frozen  # noqa: E402
 from rss.dense_embed import encode_checkpointed  # noqa: E402
@@ -46,7 +47,7 @@ CHUNK_SIZE = 200
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", required=True, help="dirname under models/hf/, e.g. all-MiniLM-L6-v2")
-    parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument("--config", default=str(REPO_ROOT / "configs" / "default.yaml"))
     parser.add_argument("--time-budget", type=float, default=150.0)
     parser.add_argument(
         "--chunk-size",
@@ -62,13 +63,13 @@ def main() -> None:
     k_values = config["metrics"]["k_values"]
     top_k = max(k_values)
 
-    local_path = Path("models/hf") / args.model
+    local_path = REPO_ROOT / "models" / "hf" / args.model
     if not local_path.exists():
         raise SystemExit(f"no local snapshot at {local_path} -- run scripts/fetch_hf_models.py first")
 
     print(f"Loading arXiv corpus and eval set for {args.model}...")
-    df = load_frozen(corpus_cfg["frozen_path"])
-    records = load_jsonl(evalset_cfg["path"])
+    df = load_frozen(str(REPO_ROOT / corpus_cfg["frozen_path"]))
+    records = load_jsonl(str(REPO_ROOT / evalset_cfg["path"]))
     doc_ids = df["doc_id"].tolist()
     doc_texts = df[corpus_cfg["text_field"]].tolist()
     qids = [r["qid"] for r in records]
@@ -80,7 +81,7 @@ def main() -> None:
 
     model = SentenceTransformer(str(local_path), trust_remote_code=True)
 
-    cache_dir = Path("models/embed_cache") / args.model
+    cache_dir = REPO_ROOT / "models" / "embed_cache" / args.model
 
     t0 = time.time()
     doc_vectors = encode_checkpointed(
@@ -107,7 +108,7 @@ def main() -> None:
         f"{len(query_vectors)} queries in {query_encode_time:.1f}s"
     )
 
-    index_path = f"models/qdrant/dense_{args.model}"
+    index_path = str(REPO_ROOT / "models" / "qdrant" / f"dense_{args.model}")
     delete_qdrant_index(index_path)  # clean rebuild -- see build_qdrant's rebuild-at-same-path note
     payloads = [{"doc_id": d} for d in doc_ids]
 
@@ -149,7 +150,7 @@ def main() -> None:
         "query_latency_ms": {"p50": p50, "p95": p95},
         "vector_dim": int(doc_vectors.shape[1]),
     }
-    out_dir = Path("results")
+    out_dir = REPO_ROOT / "results"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"phase2_dense_{args.model}.json"
     out_path.write_text(json.dumps(out, indent=2))
