@@ -9,14 +9,20 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Phase 0 — Foundation
 
-- [ ] **0.1** Load arXiv ML abstracts (`CShorten/ML-ArXiv-Papers`), inspect fields
-- [ ] **0.2** Sample 10-20K abstracts, one abstract = one document; freeze sample to `data/` with a fixed seed
+- [~] **0.1** Load arXiv ML abstracts (`CShorten/ML-ArXiv-Papers`), inspect fields
+  - `scripts/build_corpus.py` written and dry-run tested against a synthetic local CSV -- works end to end.
+  - Blocked: huggingface.co is not reachable from this network. Need the dataset fetched from a
+    machine that can reach it and passed in via `--local` (see script docstring).
+- [~] **0.2** Sample 10-20K abstracts, one abstract = one document; freeze sample to `data/` with a fixed seed
+  - `rss/corpus.py` (`_sample_and_id`, `freeze`, `load_frozen`) implemented and unit-tested
+    (`tests/test_corpus.py`, 9 passing). Blocked on real data for the same reason as 0.1.
 - [ ] **0.3** Build the eval set: LLM-generate one research question per sampled abstract for ~300-500 abstracts
   - ⚠️ **Generate questions; do not extract phrases.** Extraction leaks surface tokens to BM25
   - [ ] Spot-check 20 by hand, record the reject rate
   - [ ] Hard timebox: one hour
 - [ ] **0.4** Split eval set into fine-tune / held-out slices (must be **disjoint** — see 2b)
-- [ ] **0.5** Metrics harness: nDCG@10, Recall@10, MRR, with unit tests on a toy ranking
+- [x] **0.5** Metrics harness: nDCG@10, Recall@10, MRR, with unit tests on a toy ranking
+  - `rss/metrics.py` implemented; `tests/test_metrics.py`, 7 passing.
 
 ## Phase 1 — Word2Vec from scratch (in-domain)
 
