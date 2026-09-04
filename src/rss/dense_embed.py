@@ -140,7 +140,20 @@ def encode_checkpointed(
 
     for i in range(n_chunks):
         chunk_path = cache_dir / f"{prefix}_{i:04d}.npy"
+        expected_len = min(chunk_size, len(texts) - i * chunk_size)
         if chunk_path.exists():
+            # Guard against a cache dir reused with a DIFFERENT chunk_size
+            # than it was written with -- chunk files are numbered by index
+            # only, so a size mismatch would otherwise silently misalign the
+            # reassembled array against whatever doc_ids/qids the caller
+            # zips it with, rather than raising anything.
+            existing_len = np.load(chunk_path, mmap_mode="r").shape[0]
+            if existing_len != expected_len:
+                raise ValueError(
+                    f"{chunk_path} has {existing_len} rows but chunk_size={chunk_size} expects "
+                    f"{expected_len} -- this cache dir was populated with a different chunk_size; "
+                    "clear it (or use a fresh cache_dir) before changing chunk_size"
+                )
             continue
         if time.time() - t0 > time_budget:
             return None

@@ -143,3 +143,15 @@ def test_encode_checkpointed_partial_progress_is_resumable(tmp_path):
     out = encode_checkpointed(model2, texts, tmp_path, "docs", time_budget=60, chunk_size=3)
     assert out.shape == (12, 4)
     assert len(model2.calls) == 4 - n_done_first_pass
+
+
+def test_encode_checkpointed_raises_on_chunk_size_mismatch(tmp_path):
+    model = _FakeModel()
+    texts = [f"t{i}" for i in range(9)]
+    encode_checkpointed(model, texts, tmp_path, "docs", time_budget=60, chunk_size=3)
+
+    # Re-using the same cache dir with a DIFFERENT chunk_size should raise
+    # rather than silently reassembling a misaligned array.
+    model2 = _FakeModel()
+    with pytest.raises(ValueError, match="chunk_size"):
+        encode_checkpointed(model2, texts, tmp_path, "docs", time_budget=60, chunk_size=2)

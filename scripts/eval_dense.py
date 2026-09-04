@@ -12,7 +12,7 @@ rss.dense_embed.encode() (which caches the WHOLE encode, all-or-nothing --
 fine for a fast call, not for a multi-call slow one).
 
 Usage:
-    python scripts/eval_dense.py --model all-MiniLM-L6-v2 [--time-budget 150]
+    python scripts/eval_dense.py --model all-MiniLM-L6-v2 [--time-budget 150] [--chunk-size 200]
 
 `--model` is the local directory name under models/hf/ (see
 scripts/fetch_hf_models.py). Writes: results/phase2_dense_<model>.json
@@ -48,6 +48,12 @@ def main() -> None:
     parser.add_argument("--model", required=True, help="dirname under models/hf/, e.g. all-MiniLM-L6-v2")
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--time-budget", type=float, default=150.0)
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=CHUNK_SIZE,
+        help="docs per checkpoint -- lower for slower models so a killed call loses less work",
+    )
     args = parser.parse_args()
 
     config = yaml.safe_load(Path(args.config).read_text())
@@ -78,7 +84,7 @@ def main() -> None:
 
     t0 = time.time()
     doc_vectors = encode_checkpointed(
-        model, doc_texts, cache_dir, "docs", time_budget=args.time_budget, chunk_size=CHUNK_SIZE
+        model, doc_texts, cache_dir, "docs", time_budget=args.time_budget, chunk_size=args.chunk_size
     )
     if doc_vectors is None:
         print("  [docs] time budget reached -- re-run this script to continue")
@@ -88,7 +94,7 @@ def main() -> None:
     remaining_budget = max(args.time_budget - doc_encode_time, 10.0)
     t0 = time.time()
     query_vectors = encode_checkpointed(
-        model, query_texts, cache_dir, "queries", time_budget=remaining_budget, chunk_size=CHUNK_SIZE
+        model, query_texts, cache_dir, "queries", time_budget=remaining_budget, chunk_size=args.chunk_size
     )
     if query_vectors is None:
         print("  [queries] time budget reached -- re-run this script to continue")
