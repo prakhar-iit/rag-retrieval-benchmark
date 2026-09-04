@@ -16,6 +16,7 @@ Two entry points on purpose:
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -27,7 +28,27 @@ def _make_doc_id(text: str) -> str:
     return "arxiv_" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 
-def _sample_and_id(df: pd.DataFrame, text_field: str, sample_size: int, seed: int) -> pd.DataFrame:
+# arXiv abstracts occasionally are not abstracts at all -- withdrawal/retraction
+# notices where the author pulled the paper. Real example found in this corpus:
+# "This preprint has been withdrawn by the author for revision". These are noise
+# for both eval-question generation (nothing to ask about) and embeddings.
+_DEGENERATE_ABSTRACT_RE = re.compile(
+    r"withdrawn|retracted|kept secret|removed by (?:the )?author|duplicate submission",
+    re.IGNORECASE,
+)
+
+
+def _sample_and_id(
+    df: pd.DataFrame,
+    text_field: str,
+    sample_size: int,
+    seed: int,
+    min_words: int = 15,
+) -> pd.DataFrame:
+    # Drop pandas' own leftover index columns from CSV/parquet round-trips
+    # (some HF dataset exports carry these) -- they're not part of the schema.
+    df = df.drop(columns=[c for c in df.columns if c.startswith("Unnamed:")], errors="ignore")
+
     if text_field not in df.columns:
         raise ValueError(
             f"text_field={text_field!r} not found. Available columns: {list(df.columns)}. "
@@ -36,6 +57,8 @@ def _sample_and_id(df: pd.DataFrame, text_field: str, sample_size: int, seed: in
     df = df.dropna(subset=[text_field])
     df = df[df[text_field].str.strip().astype(bool)]
     df = df.drop_duplicates(subset=[text_field])
+    df = df[~df[text_field].str.contains(_DEGENERATE_ABSTRACT_RE)]
+    df = df[df[text_field].str.split().map(len) >= min_words]
 
     if sample_size < len(df):
         df = df.sample(n=sample_size, random_state=seed)
@@ -49,7 +72,9 @@ def _sample_and_id(df: pd.DataFrame, text_field: str, sample_size: int, seed: in
     return df[cols].reset_index(drop=True)
 
 
-def load_and_sample(dataset: str, sample_size: int, seed: int, text_field: str = "abstract") -> pd.DataFrame:
+def load_and_sample(
+    dataset: str, sample_size: int, seed: int, text_field: str = "abstract", min_words: int = 15
+) -> pd.DataFrame:
     """Load `dataset` from the HuggingFace Hub, sample `sample_size` abstracts
     deterministically, return a DataFrame with a stable `doc_id` column.
 
@@ -60,10 +85,12 @@ def load_and_sample(dataset: str, sample_size: int, seed: int, text_field: str =
 
     hf_ds = load_dataset(dataset, split="train")
     df = hf_ds.to_pandas()
-    return _sample_and_id(df, text_field=text_field, sample_size=sample_size, seed=seed)
+    return _sample_and_id(df, text_field=text_field, sample_size=sample_size, seed=seed, min_words=min_words)
 
 
-def load_local_and_sample(path: str, sample_size: int, seed: int, text_field: str = "abstract") -> pd.DataFrame:
+def load_local_and_sample(
+    path: str, sample_size: int, seed: int, text_field: str = "abstract", min_words: int = 15
+) -> pd.DataFrame:
     """Same sampling + id logic as load_and_sample, but reading a file already
     on disk (csv, json, jsonl, or parquet) instead of hitting the Hub."""
     p = Path(path)
@@ -78,7 +105,7 @@ def load_local_and_sample(path: str, sample_size: int, seed: int, text_field: st
     else:
         raise ValueError(f"Unrecognized file type for {path}; expected .csv/.parquet/.jsonl/.json")
 
-    return _sample_and_id(df, text_field=text_field, sample_size=sample_size, seed=seed)
+    return _sample_and_id(df, text_field=text_field, sample_size=sample_size, seed=seed, min_words=min_words)
 
 
 def freeze(df: pd.DataFrame, path: str) -> None:

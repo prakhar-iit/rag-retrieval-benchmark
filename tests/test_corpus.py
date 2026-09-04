@@ -13,7 +13,11 @@ from rss.corpus import (
 def _toy_df(n=50):
     return pd.DataFrame(
         {
-            "abstract": [f"This is abstract number {i} about topic {i % 7}." for i in range(n)],
+            "abstract": [
+                f"This is a synthetic abstract number {i} about topic {i % 7}, "
+                f"written with enough words to clear the minimum length filter."
+                for i in range(n)
+            ],
             "title": [f"Paper {i}" for i in range(n)],
         }
     )
@@ -49,9 +53,35 @@ def test_sample_size_larger_than_corpus_keeps_everything():
 
 def test_drops_empty_and_duplicate_abstracts():
     df = pd.DataFrame({"abstract": ["real one", "", "  ", "real one", "another real one"]})
-    out = _sample_and_id(df, text_field="abstract", sample_size=10, seed=13)
+    out = _sample_and_id(df, text_field="abstract", sample_size=10, seed=13, min_words=0)
     assert len(out) == 2
     assert set(out["abstract"]) == {"real one", "another real one"}
+
+
+def test_drops_stray_unnamed_index_columns():
+    df = pd.DataFrame({
+        "Unnamed: 0.1": [0, 1],
+        "Unnamed: 0": [0.0, 1.0],
+        "abstract": ["first real abstract here", "second real abstract here"],
+        "title": ["A", "B"],
+    })
+    out = _sample_and_id(df, text_field="abstract", sample_size=10, seed=13)
+    assert not any(c.startswith("Unnamed:") for c in out.columns)
+    assert set(out.columns) == {"doc_id", "abstract", "title"}
+
+
+def test_drops_degenerate_and_too_short_abstracts():
+    df = pd.DataFrame({
+        "abstract": [
+            "This is a perfectly normal abstract with plenty of real content in it about topic X.",
+            "This preprint has been withdrawn by the author for revision.",
+            "Some content of the article needs to be kept secret.",
+            "Too short.",
+        ]
+    })
+    out = _sample_and_id(df, text_field="abstract", sample_size=10, seed=13, min_words=15)
+    assert len(out) == 1
+    assert "normal abstract" in out.iloc[0]["abstract"]
 
 
 def test_missing_text_field_raises_with_helpful_message():
