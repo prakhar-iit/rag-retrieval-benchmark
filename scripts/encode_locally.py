@@ -42,7 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from rss.corpus import load_frozen  # noqa: E402
-from rss.dense_embed import encode_checkpointed  # noqa: E402
+from rss.dense_embed import encode_checkpointed, get_task_prefix  # noqa: E402
 from rss.evalset import load_jsonl  # noqa: E402
 
 
@@ -64,9 +64,13 @@ def main() -> None:
     print(f"Loading corpus and eval set for {args.model}...")
     df = load_frozen(str(REPO_ROOT / corpus_cfg["frozen_path"]))
     records = load_jsonl(str(REPO_ROOT / evalset_cfg["path"]))
-    doc_texts = df[corpus_cfg["text_field"]].tolist()
-    query_texts = [r["query"] for r in records]
+    doc_prefix = get_task_prefix(args.model, "docs")
+    query_prefix = get_task_prefix(args.model, "queries")
+    doc_texts = [doc_prefix + t for t in df[corpus_cfg["text_field"]]]
+    query_texts = [query_prefix + r["query"] for r in records]
     print(f"  {len(doc_texts)} documents, {len(query_texts)} eval queries")
+    if doc_prefix or query_prefix:
+        print(f"  applying task prefixes: docs={doc_prefix!r} queries={query_prefix!r}")
 
     from sentence_transformers import SentenceTransformer
 

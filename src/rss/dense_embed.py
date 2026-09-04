@@ -165,3 +165,24 @@ def encode_checkpointed(
 
     chunks = [np.load(cache_dir / f"{prefix}_{i:04d}.npy") for i in range(n_chunks)]
     return np.concatenate(chunks, axis=0)
+
+
+# Some models are trained with task-instruction prefixes prepended to the
+# input text, and REQUIRE them for correct embeddings -- not a convention to
+# follow for tidiness, but part of how the model was trained to distinguish
+# "this text is a document" from "this text is a query" (asymmetric search).
+# Omitting the prefix doesn't error, it just silently produces embeddings the
+# model was never trained to produce. Currently only nomic-embed-text-v1.5
+# among this project's models needs one (see its model card's "Task
+# instruction prefixes" section) -- all-MiniLM-L6-v2 and all-mpnet-base-v2
+# are standard symmetric sentence-similarity models with no such convention.
+TASK_PREFIXES = {
+    "nomic-embed-text-v1.5": {"docs": "search_document: ", "queries": "search_query: "},
+}
+
+
+def get_task_prefix(model_dirname: str, kind: str) -> str:
+    """Task-instruction prefix to prepend before encoding with
+    `model_dirname` (its models/hf/ directory name) for `kind` ("docs" or
+    "queries"); "" if the model doesn't use one."""
+    return TASK_PREFIXES.get(model_dirname, {}).get(kind, "")

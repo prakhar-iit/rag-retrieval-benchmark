@@ -32,7 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from rss.corpus import load_frozen  # noqa: E402
-from rss.dense_embed import encode_checkpointed  # noqa: E402
+from rss.dense_embed import encode_checkpointed, get_task_prefix  # noqa: E402
 from rss.evalset import load_jsonl  # noqa: E402
 from rss.index import build_qdrant, delete_qdrant_index, qdrant_index_size_bytes, search  # noqa: E402
 from rss.metrics import evaluate  # noqa: E402
@@ -71,9 +71,13 @@ def main() -> None:
     df = load_frozen(str(REPO_ROOT / corpus_cfg["frozen_path"]))
     records = load_jsonl(str(REPO_ROOT / evalset_cfg["path"]))
     doc_ids = df["doc_id"].tolist()
-    doc_texts = df[corpus_cfg["text_field"]].tolist()
+    doc_prefix = get_task_prefix(args.model, "docs")
+    query_prefix = get_task_prefix(args.model, "queries")
+    doc_texts = [doc_prefix + t for t in df[corpus_cfg["text_field"]]]
     qids = [r["qid"] for r in records]
-    query_texts = [r["query"] for r in records]
+    query_texts = [query_prefix + r["query"] for r in records]
+    if doc_prefix or query_prefix:
+        print(f"  applying task prefixes: docs={doc_prefix!r} queries={query_prefix!r}")
     gold_map = {r["qid"]: r["gold_doc_id"] for r in records}
     print(f"  {len(df)} documents, {len(records)} eval queries")
 

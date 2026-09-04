@@ -155,3 +155,20 @@ def test_encode_checkpointed_raises_on_chunk_size_mismatch(tmp_path):
     model2 = _FakeModel()
     with pytest.raises(ValueError, match="chunk_size"):
         encode_checkpointed(model2, texts, tmp_path, "docs", time_budget=60, chunk_size=2)
+
+
+from rss.dense_embed import get_task_prefix
+
+
+def test_get_task_prefix_returns_prefix_for_nomic():
+    assert get_task_prefix("nomic-embed-text-v1.5", "docs") == "search_document: "
+    assert get_task_prefix("nomic-embed-text-v1.5", "queries") == "search_query: "
+
+
+def test_get_task_prefix_empty_for_models_without_one():
+    assert get_task_prefix("all-MiniLM-L6-v2", "docs") == ""
+    assert get_task_prefix("all-mpnet-base-v2", "queries") == ""
+
+
+def test_get_task_prefix_empty_for_unknown_model():
+    assert get_task_prefix("some-other-model", "docs") == ""
