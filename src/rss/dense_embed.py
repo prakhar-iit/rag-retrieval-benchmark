@@ -51,7 +51,10 @@ def encode(
 
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(str(local_path))
+    # trust_remote_code: nomic-embed-text-v1.5 needs it (custom architecture
+    # code, vendored locally by scripts/fetch_hf_models.py -- see its
+    # docstring); harmless no-op for models that don't ship custom code.
+    model = SentenceTransformer(str(local_path), trust_remote_code=True)
     vectors = model.encode(
         texts, batch_size=batch_size, show_progress_bar=False, convert_to_numpy=True
     ).astype(np.float32)

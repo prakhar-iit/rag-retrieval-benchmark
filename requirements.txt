@@ -16,6 +16,7 @@ gensim>=4.3.3
 # dense embeddings (Phase 2)
 sentence-transformers>=3.0
 torch>=2.3
+einops>=0.7   # nomic-embed-text-v1.5's custom modeling code requires it
 
 # vector database (Phase 2)
 qdrant-client>=1.9

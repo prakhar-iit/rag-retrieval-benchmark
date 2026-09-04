@@ -72,7 +72,7 @@ def main() -> None:
 
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(str(local_path))
+    model = SentenceTransformer(str(local_path), trust_remote_code=True)
 
     cache_dir = Path("models/embed_cache") / args.model
 
