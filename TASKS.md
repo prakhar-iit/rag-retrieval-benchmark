@@ -149,7 +149,21 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     on-disk format), query latency p50=130ms / p95=188ms (naive per-query Python scoring over 20K
     docs, unoptimized -- not a fair comparison to an ANN index's latency, noted for 2.7).
 - [ ] **2.2** `all-MiniLM-L6-v2` and `all-mpnet-base-v2`
+  - Both models fetched (`scripts/fetch_hf_models.py`), load and encode correctly via
+    `SentenceTransformer` -- verified directly. `scripts/eval_dense.py` is written and ready
+    (encode corpus + eval queries, build a real Qdrant index, evaluate -- same shape as
+    `scripts/eval_bm25.py`), but not yet run against the full 20K-doc corpus: encoding is slow
+    enough on CPU to need `rss.dense_embed.encode_checkpointed`'s chunked/resumable encoding
+    (5 unit tests against a fake model), which is built and tested but hasn't had a real run yet
+    -- blocked on a persistent filesystem lock on `data/corpus_sample.parquet` in this dev
+    environment (external to this project's code; see chat), not on anything code-side.
 - [ ] **2.3** MRL-capable model (`nomic-embed-text-v1.5` or `Qwen3-Embedding-0.6B`)
+  - `nomic-embed-text-v1.5` chosen. Its `config.json` `auto_map` points at a SEPARATE repo
+    (`nomic-ai/nomic-bert-2048`) for the custom model code; `scripts/fetch_hf_models.py` now fetches
+    it too, but the first fetch predates that fix, so it needs one more re-run before this model
+    will load (currently fails with a 403 trying to reach huggingface.co for the missing code).
+    `all-MiniLM-L6-v2`/`all-mpnet-base-v2` above aren't affected -- they don't use custom
+    architecture code.
 - [ ] **2.4** Index in Qdrant (not only FAISS — the claim is *vector DB*)
   - Infra done ahead of the vectors themselves, as prep while blocked on HF model access (below):
     `docker` isn't installed on this dev machine, so `rss.index.build_qdrant`/`search` use Qdrant's
@@ -186,6 +200,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ### Phase 2c — Reranking
 - [ ] **2c.1** Cross-encoder rerank over top-50 (`bge-reranker-base`)
+  - `rss.rerank.load_reranker`/`rerank` implemented: load once (via `sentence_transformers`
+    `CrossEncoder`, from the local `models/hf/bge-reranker-base` snapshot), then call `rerank` per
+    query -- loading per-query would swamp the added-latency number 2c.2 needs. Caps scoring to the
+    first `top_n` candidates from the first-stage retriever rather than the whole corpus, which is
+    the entire reason reranking is a second stage. 7 unit tests against a fake cross-encoder
+    (ordering, `top_n` capping, empty/single-candidate edges). Smoke-tested against the real
+    `bge-reranker-base`: loads and produces a sensible reordering on a toy 3-candidate example.
+    Not yet run as a full eval (needs a first-stage run's top-50 per query as input) -- pending 2.1's
+    BM25 run's candidates or a dense run once 2.2 finishes.
 - [ ] **2c.2** nDCG@10 before/after, and added p95 latency
 
 ### Phase 2d — Scaling curve
