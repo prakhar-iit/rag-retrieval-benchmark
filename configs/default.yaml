@@ -17,6 +17,10 @@ word2vec:
   negative: 10
   epochs: 10
   use_phrases: true
+  workers: 4               # single-threaded (workers=1) is ~350s for this corpus and
+                            # bit-exact reproducible; workers=4 is ~95s but only
+                            # approximately deterministic (gensim's threaded SGD races
+                            # regardless of seed) -- traded for iteration speed
 dense:
   models:
     - sentence-transformers/all-MiniLM-L6-v2

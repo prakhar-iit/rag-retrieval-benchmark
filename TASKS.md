@@ -53,14 +53,37 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Phase 1 — Word2Vec from scratch (in-domain)
 
-- [ ] **1.1** Preprocess: tokenize, lowercase, strip punctuation
-- [ ] **1.2** Run `gensim.models.Phrases` for bigrams/trigrams (`reinforcement_learning`, `attention_mechanism`)
-- [ ] **1.3** Train `Word2Vec(sg=1, vector_size=300, window=5, min_count=5, negative=10, epochs=10)`
-- [ ] **1.4** Sanity check: nearest neighbours of `transformer`, `attention`, `diffusion`
-- [ ] **1.5** Document-level vectors: mean pooling **and** IDF-weighted pooling
+- [x] **1.1** Preprocess: tokenize, lowercase, strip punctuation
+  - `rss/static_embed.tokenize`: single regex `[a-z][a-z0-9]*` on lowercased text. Tokens must
+    start with a letter, so pure numbers are dropped but alphanumeric jargon (`resnet50`, `gpt3`)
+    survives. No external tokenizer dependency, consistent with the rest of the repo.
+- [x] **1.2** Run `gensim.models.Phrases` for bigrams/trigrams (`reinforcement_learning`, `attention_mechanism`)
+  - `rss/static_embed.build_phrases`: two passes (bigrams, then trigrams over the bigram-merged
+    sentences). 3,454,074 unigram tokens -> 2,945,107 tokens after merging on the real corpus.
+- [x] **1.3** Train `Word2Vec(sg=1, vector_size=300, window=5, min_count=5, negative=10, epochs=10)`
+  - `rss/static_embed.train`, run via `scripts/train_word2vec.py`. Vocab: 26,935 terms.
+  - ⚠️ **Determinism vs. speed tradeoff, documented in `configs/default.yaml`:** gensim's threaded
+    SGD is only bit-exact reproducible at `workers=1`, which takes ~350s for this corpus (10
+    epochs) -- too slow for the tooling available while building this (no persistent background
+    process across tool calls). Set `workers=4` (~95s train time) instead, which is
+    *approximately* deterministic (same seed, but thread scheduling still races) rather than
+    bit-exact. `static_embed.train()` itself still defaults to `workers=1` when not overridden by
+    config, so unit tests stay bit-exact reproducible.
+- [x] **1.4** Sanity check: nearest neighbours of `transformer`, `attention`, `diffusion` (+ `embedding`, `gradient`)
+  - All five look sound. `transformer` -> `gnmt`, `xlnet`, `self_attention_mechanism`, `bert`; `attention`
+    -> `attention_mechanism`, `multi_head`, `self_attention`; `embedding` -> `embeddings`,
+    `distributed_stochastic_neighbor` (t-SNE), `skip_gram`; `gradient` -> `gradients`, `hessian`,
+    `natural_gradient_descent`. One corpus-composition observation: `diffusion`'s neighbours are
+    mostly diffusion-*process* terms (`diffusion_process`, `indian_buffet`, `markov_jump`), not
+    diffusion *models* (image generation) -- this ML-ArXiv-Papers snapshot appears to under-represent
+    or predate the diffusion-model boom relative to how the term is used today. Worth remembering
+    when interpreting later embedding comparisons that also touch this term.
+- [x] **1.5** Document-level vectors: mean pooling **and** IDF-weighted pooling
+  - `rss/static_embed.doc_vector(model, tokens, idf=None)` -- one function, both modes (`idf=None`
+    -> uniform mean; `idf={...}` -> weighted). `compute_idf` uses sklearn-style smoothed IDF.
 - [ ] **1.6** Three-way comparison on the same eval set:
   - [ ] in-domain (arXiv-trained)
-  - [ ] out-of-domain (existing OpinRank model from ML-Cookbook)
+  - [ ] out-of-domain (existing OpinRank model from ML-Cookbook) -- **location TBD, asked the user**
   - [ ] pretrained GoogleNews vectors
   - [ ] **Finding to test: does domain beat scale for static embeddings?**
 
