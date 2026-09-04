@@ -38,11 +38,14 @@ Most public work does one or the other.
 
 All rows use IDF-weighted pooling where pooling applies (see [TASKS.md](TASKS.md) for the
 mean-pooling comparison). Word2Vec index size/latency are [TBD] because Phase 1 evaluates with
-brute-force cosine similarity over the full corpus, not a real index -- that's Phase 2 (2.4).
+brute-force cosine similarity over the full corpus, not a real index -- that's Phase 2 (2.4). BM25's
+index size/latency are approximate for a different reason: `rank_bm25` has no on-disk index format or
+optimized query path, so its numbers below are a pickled-object size and naive per-query Python
+scoring latency, not a fair comparison to a real ANN index -- treat them as a floor, not a target.
 
 | Method | nDCG@10 | Recall@10 | MRR | Index size | p95 latency |
 |---|---|---|---|---|---|
-| BM25 | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| BM25 | 0.9779 | 0.9950 | 0.9723 | ~24.7MB* | 188ms* |
 | Word2Vec (arXiv, in-domain) | 0.8534 | 0.9350 | 0.8290 | [TBD] | [TBD] |
 | Word2Vec (GoogleNews, pretrained) | 0.8227 | 0.8925 | 0.8022 | [TBD] | [TBD] |
 | Word2Vec (OpinRank, out-of-domain) | 0.3714 | 0.4950 | 0.3374 | [TBD] | [TBD] |
