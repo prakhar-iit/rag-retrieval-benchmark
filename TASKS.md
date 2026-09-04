@@ -163,7 +163,20 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] **2.5** **MRL truncation sweep** 768 -> 512 -> 256 -> 128 -> 64
   - [ ] Same sweep on non-MRL `all-mpnet-base-v2` as the control
   - [ ] ⚠️ Renormalise after slicing; assert unit norm in the harness
+  - Mechanics implemented and unit-tested ahead of having real dense vectors (prep while blocked
+    on HF access): `rss.dense_embed.truncate` slices + renormalises, `assert_unit_norm` guards the
+    classic silent-failure MRL bug (a mis-normalised vector still LOOKS fine -- cosine similarity
+    between two vectors both wrong the same way doesn't crash, it just quietly degrades nDCG).
+    8 unit tests cover slicing, renormalisation, the zero-vector edge case, and the dim-too-large
+    error path. `encode()` is written against a *local* snapshot directory (`models/hf/<name>`)
+    rather than an automatic HF download, since huggingface.co is unreachable here; raises a clear
+    `FileNotFoundError` naming the expected path (tested) until the user's fetch lands.
 - [ ] **2.6** Hybrid: reciprocal rank fusion of BM25 + best dense; sweep the weight
+  - RRF and weighted-score fusion both implemented and unit-tested (`rss.fusion`) ahead of having
+    a dense run to fuse with BM25 -- 8 tests cover RRF's rank-sum formula, a doc present in every
+    run beating one missing from some, weighted fusion reducing to a single method at the weight
+    extremes, and the min-max normalisation that keeps BM25's unbounded scores from silently
+    dominating cosine's `[-1, 1]` range when combined.
 - [ ] **2.7** Systems numbers: index build time, index size, p50/p95 latency, $/1M embeddings
 
 ### Phase 2b — Fine-tuning
