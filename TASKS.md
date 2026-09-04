@@ -157,13 +157,23 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     (5 unit tests against a fake model), which is built and tested but hasn't had a real run yet
     -- blocked on a persistent filesystem lock on `data/corpus_sample.parquet` in this dev
     environment (external to this project's code; see chat), not on anything code-side.
-- [ ] **2.3** MRL-capable model (`nomic-embed-text-v1.5` or `Qwen3-Embedding-0.6B`)
-  - `nomic-embed-text-v1.5` chosen. Its `config.json` `auto_map` points at a SEPARATE repo
-    (`nomic-ai/nomic-bert-2048`) for the custom model code; `scripts/fetch_hf_models.py` now fetches
-    it too, but the first fetch predates that fix, so it needs one more re-run before this model
-    will load (currently fails with a 403 trying to reach huggingface.co for the missing code).
-    `all-MiniLM-L6-v2`/`all-mpnet-base-v2` above aren't affected -- they don't use custom
-    architecture code.
+- [x] **2.3** MRL-capable model (`nomic-embed-text-v1.5` or `Qwen3-Embedding-0.6B`)
+  - `nomic-embed-text-v1.5` chosen and confirmed working (loads via `SentenceTransformer`, encodes
+    to 768-dim). Getting there took two real fixes, both now folded into `scripts/fetch_hf_models.py`
+    permanently:
+    1. Its `config.json` `auto_map` points at a SEPARATE repo (`nomic-ai/nomic-bert-2048`) for the
+       custom model code. Having that repo present on disk was NOT enough on its own -- transformers'
+       dynamic-module loading fetches the referenced repo from the Hub at load time regardless of
+       what's sitting in a sibling local directory, so this still 403'd even after downloading
+       `nomic-bert-2048` in full. Fixed by vendoring its two small `.py` files directly into
+       `nomic-embed-text-v1.5/` and rewriting the `auto_map` to reference them locally (the exact
+       format `nomic-bert-2048`'s own `config.json` uses to describe itself) -- fully self-contained
+       now, no runtime dependency on `nomic-bert-2048` or huggingface.co. Only its ~100KB of code is
+       fetched, not its unrelated 525MB of separately-pretrained weights.
+    2. Needs the `einops` package (added to `requirements.txt`) and `trust_remote_code=True` (added
+       to `rss.dense_embed.encode` and `scripts/eval_dense.py`) to actually load.
+    `all-MiniLM-L6-v2`/`all-mpnet-base-v2`/`bge-reranker-base` aren't affected by any of this -- they
+    don't use custom architecture code.
 - [ ] **2.4** Index in Qdrant (not only FAISS — the claim is *vector DB*)
   - Infra done ahead of the vectors themselves, as prep while blocked on HF model access (below):
     `docker` isn't installed on this dev machine, so `rss.index.build_qdrant`/`search` use Qdrant's
