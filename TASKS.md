@@ -148,15 +148,21 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   - Systems numbers: index build 0.66s, ~24.7MB pickled (approximate -- BM25Okapi has no native
     on-disk format), query latency p50=130ms / p95=188ms (naive per-query Python scoring over 20K
     docs, unoptimized -- not a fair comparison to an ANN index's latency, noted for 2.7).
-- [ ] **2.2** `all-MiniLM-L6-v2` and `all-mpnet-base-v2`
-  - Both models fetched (`scripts/fetch_hf_models.py`), load and encode correctly via
-    `SentenceTransformer` -- verified directly. `scripts/eval_dense.py` is written and ready
-    (encode corpus + eval queries, build a real Qdrant index, evaluate -- same shape as
-    `scripts/eval_bm25.py`), but not yet run against the full 20K-doc corpus: encoding is slow
-    enough on CPU to need `rss.dense_embed.encode_checkpointed`'s chunked/resumable encoding
-    (5 unit tests against a fake model), which is built and tested but hasn't had a real run yet
-    -- blocked on a persistent filesystem lock on `data/corpus_sample.parquet` in this dev
-    environment (external to this project's code; see chat), not on anything code-side.
+- [x] **2.2** `all-MiniLM-L6-v2` and `all-mpnet-base-v2`
+  - Both run end-to-end on the full 20K-doc corpus via `scripts/eval_dense.py` (real Qdrant index,
+    local/embedded mode). `all-MiniLM-L6-v2` (384d) encoded in this dev VM directly; `all-mpnet-base-v2`
+    (768d) was too slow here (~3 docs/s on 4 CPUs/no GPU) so its corpus + query encoding ran on the
+    user's own Mac via `scripts/encode_locally.py` -- same `rss.dense_embed.encode_checkpointed` cache
+    format, so re-running `eval_dense.py` in the dev VM picked the vectors up directly and only built
+    the index + evaluated, keeping those systems numbers in the same environment as BM25/MiniLM.
+    **all-MiniLM-L6-v2: nDCG@10=0.9558, Recall@10=0.9925, MRR=0.9438**, index build 82.1s/82.7MB,
+    query latency p50=10.3ms/p95=13.7ms.
+    **all-mpnet-base-v2: nDCG@10=0.9652, Recall@10=0.9900, MRR=0.9577**, index build 143.7s/164.7MB,
+    query latency p50=50.9ms/p95=79.7ms (both roughly double MiniLM's -- 768d vs 384d).
+    Both sit between in-domain Word2Vec (0.8534) and BM25 (0.9779): a good general-purpose
+    sentence-transformer beats from-scratch Word2Vec but still doesn't beat lexical match on this
+    jargon-dense corpus, consistent with 2.1's finding. mpnet's larger/better-trained encoder edges out
+    MiniLM but at ~2x the index size and query latency -- a real, quantifiable quality/cost tradeoff.
 - [x] **2.3** MRL-capable model (`nomic-embed-text-v1.5` or `Qwen3-Embedding-0.6B`)
   - `nomic-embed-text-v1.5` chosen and confirmed working (loads via `SentenceTransformer`, encodes
     to 768-dim). Getting there took two real fixes, both now folded into `scripts/fetch_hf_models.py`
