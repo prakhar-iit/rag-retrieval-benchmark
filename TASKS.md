@@ -384,8 +384,64 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     accuracy-vs-latency tradeoff.
 
 ### Phase 2d — Scaling curve
-- [ ] **2d.1** Record index build time, size, p95 latency at 5K / 10K / 20K docs
-- [ ] **2d.2** Fit and extrapolate to 1M and 100M; write up the arithmetic
+- [x] **2d.1** Record index build time, size, p95 latency at 5K / 10K / 20K docs
+  - `scripts/eval_scaling.py` subsamples the first N rows of the already-frozen 20K corpus (no
+    re-encoding -- slices the same cached `all-mpnet-base-v2` vectors used throughout 2.2-2.7) and
+    rebuilds BM25 + a dense Qdrant index fresh at each size (index always rebuilt, never reused
+    across invocations -- see 2c.2 for why "reuse if the directory exists" is unsafe without
+    verifying the reused index actually has data). This is deliberately a SYSTEMS experiment, not a
+    quality one: subsampling the corpus would make nDCG/recall meaningless (most eval queries' gold
+    docs simply wouldn't survive the subsample), so only build time/index size/latency are measured
+    here -- quality is already covered at the full 20K in 2.1-2.7. Latency is measured over a fixed
+    50-query sample rather than the full 400, to keep each size's run inside one shell call's time
+    budget on top of the index build itself.
+
+    | N docs | BM25 build | BM25 size | BM25 p50 | Dense build | Dense size | Dense p50 | Hybrid p50 (end-to-end) |
+    |---|---|---|---|---|---|---|---|
+    | 5,000 | 0.16s | 6.6MB | 19.0ms | 4.0s | 41.2MB | 3.4ms | 24.4ms |
+    | 10,000 | 0.26s | 12.7MB | 48.7ms | 9.0s | 82.3MB | 6.6ms | 55.9ms |
+    | 20,000 | 0.51s | 24.7MB | 115.9ms | 14.5s | 164.7MB | 12.9ms | 133.3ms |
+
+    (Absolute build times here are lower than 2.2-2.7's own numbers for the same 20K corpus -- those
+    ran on this project's CPU-constrained dev sandbox; this scaling sweep ran on the user's own,
+    faster Mac. The RATIOS between sizes, which is what this task is actually about, are unaffected
+    by which machine ran it.)
+
+    **The headline finding: BM25's naive per-query scan gets WORSE than linear as N grows, while the
+    dense/Qdrant side stays close to linear.** Fitting a power law (log-log slope) to the three
+    measured points: BM25 query latency scales as roughly N^1.31 (19.0 -> 48.7 -> 115.9ms is more
+    than a 2x jump each time N merely doubles), while dense query latency scales as roughly N^0.95
+    (essentially linear, if anything very slightly sub-linear) and hybrid's end-to-end latency
+    (dominated by its BM25 component) inherits BM25's super-linear growth at N^1.23. Index SIZE for
+    both methods scales almost exactly linearly (BM25 N^0.96, dense N^1.00) -- unsurprising, since
+    both store roughly a fixed amount of data per document. This is the concrete version of the
+    argument the whole project is built around: a naive linear/near-linear scan gets disproportionately
+    slower as a corpus grows, which is the actual reason a real ANN index exists, not just a nice-to-have.
+- [x] **2d.2** Fit and extrapolate to 1M and 100M; write up the arithmetic
+  - **Two different extrapolation methods for two different quantities, because they have different
+    reliability.** Index SIZE scales by a genuinely constant, dimension-determined ratio -- measured
+    directly rather than curve-fit: the on-disk Qdrant collection is **2.680x** the raw
+    `N * 768 * 4` float32 vector bytes at every one of the three measured sizes (2.6800x @ 5K,
+    2.6800x @ 10K, 2.6799x @ 20K -- this isn't a fit, it's the same ratio to 4 decimal places),
+    accounting for Qdrant's HNSW graph, WAL, and point/payload storage overhead. That ratio is
+    dimension-and-implementation-determined, not corpus-size-determined, so multiplying it out to
+    1M/100M is a real extrapolation, not a guess: 1M vectors -> 3.07GB raw x 2.68 = **~8.2GB**; 100M
+    vectors -> 307.2GB raw x 2.68 = **~823GB**. This *updates* the pre-existing a-priori "Scale
+    notes" estimate below (which guessed "~4.5-6GB" at 1M from generic HNSW-overhead lore) with a
+    number actually measured on this project's own index -- the real overhead turns out higher than
+    that a-priori guess, which is exactly the kind of thing worth verifying rather than assuming.
+  - LATENCY extrapolation is far shakier and is flagged as such: fitting the same log-log power law
+    to only 3 points spanning a single order of magnitude (5K-20K) and projecting 50x-5000x further
+    out (to 1M, 100M) is a large extrapolation on a small, narrow-range fit -- the literal numbers
+    (BM25 ~19s/query at 100M, dense ~43ms/query at 100M, from N^1.31 and N^0.95 fits respectively)
+    should be read as "the qualitative trend, taken at face value, would look like this," not as a
+    calibrated prediction. Nobody should build a capacity plan on a 3-point fit spanning 4x of range
+    extrapolated 5000x. What the fit DOES support with real confidence -- because it only requires
+    the SIGN of the exponent gap, not its precise value -- is the qualitative claim: BM25's naive
+    scan keeps getting relatively worse as N grows (exponent > 1), the ANN index does not (exponent
+    <= 1), and that gap compounds. At 100M docs that is the difference between a system that stays
+    usable and one that doesn't, even though the exact millisecond figures above shouldn't be quoted
+    as fact.
 
 ## Phase 3 — Topic modelling as diagnostics
 
@@ -409,19 +465,23 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Scale notes — read-only, not built here
+## Scale notes — mostly read-only, updated with real measurements from 2d
 
-At 10-20K documents none of this bites. Recorded because it is the interview territory, and because
-it is why the MRL work matters.
+At 10-20K documents none of this bites. Originally written as back-of-envelope estimates before any
+scaling data existed; the "+ HNSW graph" column below is now a MEASURED ratio (2.680x raw vector
+bytes, constant across all three sizes 2d.1 actually built -- see 2d.2), not the original lore-based
+guess -- it came out higher than the original a-priori "~4.5-6GB" range.
 
-| Corpus | Vectors @ 768d fp32 | + HNSW graph | Fits in RAM? |
+| Corpus | Vectors @ 768d fp32 | + Qdrant/HNSW overhead (2.680x, measured in 2d.1/2d.2) | Fits in RAM? |
 |---|---|---|---|
-| 1M | ~3 GB | ~4.5-6 GB | comfortably |
-| 100M | **~300 GB** | **~450-600 GB** | **no** |
+| 1M | ~3.07 GB | ~8.2 GB | comfortably |
+| 100M | **~307 GB** | **~823 GB** | **no** |
 
-Levers at 100M, from ~300 GB: int8 -> ~75 GB · binary -> ~9.6 GB · MRL 768->256 -> ~100 GB ·
-MRL 256 + int8 -> ~25 GB. **At small scale truncation is an optimisation; at 100M it is what makes
-the system buildable.**
+Levers at 100M, from ~307 GB raw (pre-overhead): int8 -> ~77 GB · binary -> ~9.6 GB · MRL 768->256 ->
+~102 GB · MRL 256 + int8 -> ~26 GB. **At small scale truncation is an optimisation; at 100M it is
+what makes the system buildable.** (These lever numbers are unchanged in kind from the original
+estimate -- they're ratios off the raw vector size, not the now-measured Qdrant overhead, which
+applies on top of whichever of these is chosen.)
 
 Other things that break: HNSW build time (hours to days, parallelises badly); re-embedding as a
 migration project (100M x ~500 tokens = 50B tokens, ~$1,000 per full re-embed); HNSW deletes leaving

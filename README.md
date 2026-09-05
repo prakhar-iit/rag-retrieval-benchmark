@@ -112,6 +112,16 @@ being silently reused -- fixed and rerun before trusting the number. Full story 
 latency and cost per 1M embeddings. A model that is 2% better and 5x slower is usually the wrong
 production choice, and most comparisons never say so.
 
+**BM25's own naive query cost scales worse than linear; the ANN index doesn't.** Rebuilding BM25
+and the dense/Qdrant index at 5K/10K/20K docs and fitting a power law to the three measured points:
+BM25 query latency grows as roughly N^1.31 (19.0 -> 48.7 -> 115.9ms p50 -- more than doubling each
+time N merely doubles), while the dense index's latency grows as roughly N^0.95 (essentially
+linear). Index size scales almost exactly linearly for both, as expected. The exact 1M/100M
+projections from a 3-point, single-order-of-magnitude fit shouldn't be taken as literal predictions
+(flagged plainly as such), but the qualitative gap -- naive lexical scoring gets disproportionately
+slower as a corpus grows, a real ANN index does not -- is the concrete version of the argument this
+whole project is about. Full numbers and the extrapolation caveats in [TASKS.md](TASKS.md) (2d).
+
 ## Layout
 
 ```
