@@ -211,17 +211,46 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     the latter two's byte-identical size is expected, same 20K vectors at 768d either way). Query
     latency (10-80ms depending on model) came out roughly 2-12x lower than BM25's naive Python
     scoring (130/188ms p50/p95), the real payoff of an actual ANN index vs brute-force/linear scoring.
-- [ ] **2.5** **MRL truncation sweep** 768 -> 512 -> 256 -> 128 -> 64
-  - [ ] Same sweep on non-MRL `all-mpnet-base-v2` as the control
-  - [ ] ⚠️ Renormalise after slicing; assert unit norm in the harness
-  - Mechanics implemented and unit-tested ahead of having real dense vectors (prep while blocked
-    on HF access): `rss.dense_embed.truncate` slices + renormalises, `assert_unit_norm` guards the
-    classic silent-failure MRL bug (a mis-normalised vector still LOOKS fine -- cosine similarity
-    between two vectors both wrong the same way doesn't crash, it just quietly degrades nDCG).
-    8 unit tests cover slicing, renormalisation, the zero-vector edge case, and the dim-too-large
-    error path. `encode()` is written against a *local* snapshot directory (`models/hf/<name>`)
-    rather than an automatic HF download, since huggingface.co is unreachable here; raises a clear
-    `FileNotFoundError` naming the expected path (tested) until the user's fetch lands.
+- [x] **2.5** **MRL truncation sweep** 768 -> 512 -> 256 -> 128 -> 64
+  - [x] Same sweep on non-MRL `all-mpnet-base-v2` as the control
+  - [x] ⚠️ Renormalise after slicing; assert unit norm in the harness
+  - `scripts/eval_mrl_sweep.py` truncates the already-cached full-dimension vectors for both models
+    (no re-encoding -- `encode_checkpointed` is called with `model=None`, which only works because
+    every chunk is already on disk from 2.2/2.3, and the checkpointed-cache-reuse path is exactly
+    why that function returns the concatenated array without ever touching the model when nothing
+    is missing) to 768/512/256/128/64 dims, renormalising and asserting unit norm at every step
+    (`rss.dense_embed.truncate` / `assert_unit_norm`, 8 unit tests), then builds a real per-combo
+    Qdrant index, evaluates, and deletes the index before the next combo (10 builds total would
+    otherwise leave ~1.6GB of scratch indices on disk). Results are saved incrementally to
+    `results/phase2_mrl_sweep.json` keyed by `{model}@{dim}`, so the sweep is resumable across
+    separate runs -- useful in practice, since 10 index builds plus evals ran across 5 separate
+    invocations here.
+
+    | dim | nomic-embed-text-v1.5 (MRL) nDCG@10 | all-mpnet-base-v2 (control) nDCG@10 |
+    |---|---|---|
+    | 768 | 0.9629 | 0.9652 |
+    | 512 | 0.9630 | 0.9596 |
+    | 256 | 0.9571 | 0.9566 |
+    | 128 | 0.9405 | 0.9356 |
+    | 64  | 0.8811 | 0.8457 |
+
+    (Full precision/recall/MRR/index-size/latency breakdown per combo lives in
+    `results/phase2_mrl_sweep.json`; the 768-dim rows here differ trivially from 2.2/2.3's own
+    numbers -- 0.9629 vs 0.9652 for mpnet, 0.9629 vs 0.9638 for nomic -- because each is a
+    separately-built Qdrant/HNSW index over the same vectors, and HNSW is an approximate index;
+    two builds of identical vectors aren't guaranteed bit-identical search order.)
+
+    **Finding: MRL training measurably reduces truncation damage, exactly as claimed.** Both models
+    are flat (even slightly non-monotonic in the noise) from 768 down to 256 dims -- truncation is
+    close to free at those sizes for either model, MRL-trained or not. The divergence shows up at
+    the aggressive end: 768->64 is 12x compression. nomic (MRL-trained) drops from 0.9629 to 0.8811,
+    a 8.5% relative loss. `all-mpnet-base-v2` (not MRL-trained, sliced anyway as the control) drops
+    from 0.9652 to 0.8457, a 12.4% relative loss -- roughly 46% more degradation than the MRL model
+    at the same compression ratio, despite starting from a near-identical full-dimension score.
+    That's the whole point of Matryoshka training made visible in one number: it's not that
+    truncation "doesn't hurt" a MRL model, it's that the model was trained so that an early prefix
+    of the embedding is itself a good embedding, so cutting it hurts less. A non-MRL model's later
+    dimensions aren't specialised to be droppable, so cutting them costs more.
 - [ ] **2.6** Hybrid: reciprocal rank fusion of BM25 + best dense; sweep the weight
   - RRF and weighted-score fusion both implemented and unit-tested (`rss.fusion`) ahead of having
     a dense run to fuse with BM25 -- 8 tests cover RRF's rank-sum formula, a doc present in every

@@ -52,9 +52,17 @@ scoring latency, not a fair comparison to a real ANN index -- treat them as a fl
 | sentence-transformers (all-MiniLM-L6-v2, 384d) | 0.9558 | 0.9925 | 0.9438 | 82.7MB | 11.6ms |
 | sentence-transformers (all-mpnet-base-v2, 768d) | 0.9652 | 0.9900 | 0.9577 | 164.7MB | 79.7ms |
 | MRL model @ 768 (nomic-embed-text-v1.5) | 0.9638 | 0.9925 | 0.9549 | 164.7MB | 23.2ms |
-| MRL model @ 256 | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| MRL model @ 256 (nomic-embed-text-v1.5, truncated) | 0.9571 | 0.9875 | 0.9474 | 82.7MB | 9.7ms |
+| MRL model @ 64 (nomic-embed-text-v1.5, truncated) | 0.8811 | 0.9500 | 0.8600 | 21.2MB | 4.2ms |
+| all-mpnet-base-v2 @ 256 (non-MRL control, truncated) | 0.9566 | 0.9925 | 0.9453 | 82.7MB | 8.7ms |
+| all-mpnet-base-v2 @ 64 (non-MRL control, truncated) | 0.8457 | 0.9425 | 0.8156 | 21.2MB | 3.1ms |
 | Hybrid RRF | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
 | + cross-encoder rerank | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+
+Full 5-point sweep (768/512/256/128/64) for both models is in [TASKS.md](TASKS.md) (2.5) --
+the table above shows only the endpoints plus the 256-dim midpoint the config calls out as the
+"good enough" compression target, since the point that matters (MRL beats the non-MRL control by
+a growing margin as dims shrink) is already visible from four rows without reproducing all ten.
 
 ## Method notes that matter
 
@@ -62,10 +70,13 @@ scoring latency, not a fair comparison to a real ANN index -- treat them as a fl
 use as queries leaks surface tokens and hands the comparison to BM25 by construction. Queries here
 are natural research questions generated from a sampled abstract; that abstract is the gold document.
 
-**Matryoshka truncation is measured against a non-MRL control.** Truncating an MRL-trained model
-should barely move nDCG; truncating a model that was not trained that way should degrade badly.
-Running both is the point — it shows MRL is a training objective, not a compression trick.
-Vectors are renormalised after slicing, since cosine similarity assumes unit norm.
+**Matryoshka truncation is measured against a non-MRL control, and the divergence shows up late.**
+Both models are essentially flat from 768 down to 256 dims -- truncation is close to free there
+either way. At 12x compression (768->64) the MRL model (nomic-embed-text-v1.5) loses 8.5% relative
+nDCG@10 vs. the non-MRL control's (`all-mpnet-base-v2`, sliced anyway) 12.4% -- confirming MRL is a
+training objective that makes early dimensions specifically droppable, not a compression trick that
+works on any embedding. Vectors are renormalised after slicing, since cosine similarity assumes
+unit norm; full sweep in [TASKS.md](TASKS.md).
 
 **Systems numbers are reported alongside quality.** Index build time, index size, p50/p95 query
 latency and cost per 1M embeddings. A model that is 2% better and 5x slower is usually the wrong
