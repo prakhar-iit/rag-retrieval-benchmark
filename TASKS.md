@@ -180,6 +180,24 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
        to `rss.dense_embed.encode` and `scripts/eval_dense.py`) to actually load.
     `all-MiniLM-L6-v2`/`all-mpnet-base-v2`/`bge-reranker-base` aren't affected by any of this -- they
     don't use custom architecture code.
+  - **Ran end-to-end on the full corpus, and caught a real methodology bug before trusting the
+    number.** nomic's model card is explicit that `search_document: `/`search_query: ` prefixes are
+    *required*, not a style convention -- checked `config_sentence_transformers.json` directly and
+    confirmed no auto-applied prompt, so plain `model.encode(text)` was silently giving it exactly
+    the wrong input. The first run (no prefix) scored **nDCG@10=0.9750** -- best of every dense model,
+    nearly matching BM25. Fixed the prefixing (`rss.dense_embed.get_task_prefix`), cleared that result
+    entirely, and re-ran: **nDCG@10=0.9638, Recall@10=0.9925, MRR=0.9549**, index build 90.2s/164.7MB,
+    query latency p50=18.6ms/p95=23.2ms.
+  - **The correct number is LOWER than the wrong one, which is itself worth reporting.** Prefixing
+    made this model's numbers WORSE on this eval, not better -- worth being honest about rather than
+    quietly using whichever run looked best. Best guess: without the prefix, nomic effectively
+    behaves as a plain symmetric encoder (query and document text embedded identically), and
+    symmetric similarity happens to suit this jargon-dense, high-lexical-overlap corpus fine; the
+    prefix is what teaches the model to treat queries and documents asymmetrically, which pays off on
+    harder retrieval tasks (e.g. genuine paraphrase/synonymy gaps) more than it does here. With
+    correct usage, **`all-mpnet-base-v2` (0.9652) is the best dense model on this eval, not nomic** --
+    the MRL truncation sweep (2.5) uses nomic anyway since it's the only MRL-capable model in the
+    lineup, but the "best dense" designation for hybrid fusion (2.6) should be `all-mpnet-base-v2`.
 - [ ] **2.4** Index in Qdrant (not only FAISS — the claim is *vector DB*)
   - Infra done ahead of the vectors themselves, as prep while blocked on HF model access (below):
     `docker` isn't installed on this dev machine, so `rss.index.build_qdrant`/`search` use Qdrant's

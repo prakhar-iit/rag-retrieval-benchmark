@@ -51,7 +51,7 @@ scoring latency, not a fair comparison to a real ANN index -- treat them as a fl
 | Word2Vec (OpinRank, out-of-domain) | 0.3714 | 0.4950 | 0.3374 | [TBD] | [TBD] |
 | sentence-transformers (all-MiniLM-L6-v2, 384d) | 0.9558 | 0.9925 | 0.9438 | 82.7MB | 11.6ms |
 | sentence-transformers (all-mpnet-base-v2, 768d) | 0.9652 | 0.9900 | 0.9577 | 164.7MB | 79.7ms |
-| MRL model @ 768 | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| MRL model @ 768 (nomic-embed-text-v1.5) | 0.9638 | 0.9925 | 0.9549 | 164.7MB | 23.2ms |
 | MRL model @ 256 | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
 | Hybrid RRF | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
 | + cross-encoder rerank | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
