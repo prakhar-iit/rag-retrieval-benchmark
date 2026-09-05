@@ -1,4 +1,4 @@
-from rss.index import bm25_index_size_bytes, build_bm25, search_bm25
+from rss.index import bm25_index_size_bytes, build_bm25, search_bm25, search_bm25_with_scores
 
 _CORPUS = [
     ["cats", "are", "small", "domesticated", "carnivorous", "mammals"],
@@ -50,6 +50,26 @@ def test_bm25_index_size_bytes_scales_with_corpus():
     assert bm25_index_size_bytes(small) > 0
 
 
+def test_search_bm25_with_scores_matches_search_bm25_ordering():
+    index = build_bm25(_CORPUS)
+    top = search_bm25(index, ["gradient", "descent"], k=3)
+    scored = search_bm25_with_scores(index, ["gradient", "descent"], k=3)
+    assert [pos for pos, _score in scored] == top
+
+
+def test_search_bm25_with_scores_scores_are_descending():
+    index = build_bm25(_CORPUS)
+    scored = search_bm25_with_scores(index, ["domesticated", "mammals"], k=5)
+    scores = [score for _pos, score in scored]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_search_bm25_with_scores_exact_match_scores_higher_than_no_match():
+    index = build_bm25(_CORPUS)
+    scored = dict(search_bm25_with_scores(index, ["paris", "france"], k=5))
+    assert scored[4] > scored[2]  # Eiffel Tower doc beats the unrelated SGD doc
+
+
 import numpy as np
 
 from rss.index import (
@@ -57,6 +77,7 @@ from rss.index import (
     delete_qdrant_index,
     qdrant_index_size_bytes,
     search,
+    search_with_scores,
 )
 
 # 5 near-orthogonal toy vectors in 4D so cosine similarity cleanly separates
@@ -124,3 +145,17 @@ def test_delete_qdrant_index_removes_directory(tmp_path):
     assert os.path.exists(path)
     delete_qdrant_index(path)
     assert not os.path.exists(path)
+
+
+def test_search_with_scores_matches_search_ordering(tmp_path):
+    index = build_qdrant("toy", _VECTORS, _PAYLOADS, path=str(tmp_path / "qdrant"))
+    top = search(index, _VECTORS[2], k=3)
+    scored = search_with_scores(index, _VECTORS[2], k=3)
+    assert [doc_id for doc_id, _score in scored] == top
+
+
+def test_search_with_scores_exact_match_scores_near_one(tmp_path):
+    index = build_qdrant("toy", _VECTORS, _PAYLOADS, path=str(tmp_path / "qdrant"))
+    scored = search_with_scores(index, _VECTORS[2], k=1)
+    assert scored[0][0] == 2
+    assert scored[0][1] > 0.99  # near-identical vector, cosine similarity near 1

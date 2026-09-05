@@ -56,8 +56,15 @@ scoring latency, not a fair comparison to a real ANN index -- treat them as a fl
 | MRL model @ 64 (nomic-embed-text-v1.5, truncated) | 0.8811 | 0.9500 | 0.8600 | 21.2MB | 4.2ms |
 | all-mpnet-base-v2 @ 256 (non-MRL control, truncated) | 0.9566 | 0.9925 | 0.9453 | 82.7MB | 8.7ms |
 | all-mpnet-base-v2 @ 64 (non-MRL control, truncated) | 0.8457 | 0.9425 | 0.8156 | 21.2MB | 3.1ms |
-| Hybrid RRF | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| Hybrid RRF (BM25 + all-mpnet-base-v2) | 0.9821 | 1.0000 | 0.9760 | ~189MB† | <1ms‡ |
+| **Hybrid weighted, bm25_weight=0.5 (best overall)** | **0.9885** | **1.0000** | **0.9846** | ~189MB† | <1ms‡ |
 | + cross-encoder rerank | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+
+† Both first-stage indices (BM25 + the dense Qdrant index) have to exist regardless of fusion
+method -- not an extra index, the sum of the BM25 and all-mpnet-base-v2 rows above.
+‡ Fusion compute itself (combining two 100-candidate lists) is sub-millisecond; total hybrid query
+latency is dominated by running both first-stage retrievers (see their own rows above), not
+separately re-measured end-to-end here -- see [TASKS.md](TASKS.md) (2.6).
 
 Full 5-point sweep (768/512/256/128/64) for both models is in [TASKS.md](TASKS.md) (2.5) --
 the table above shows only the endpoints plus the 256-dim midpoint the config calls out as the
@@ -77,6 +84,15 @@ nDCG@10 vs. the non-MRL control's (`all-mpnet-base-v2`, sliced anyway) 12.4% -- 
 training objective that makes early dimensions specifically droppable, not a compression trick that
 works on any embedding. Vectors are renormalised after slicing, since cosine similarity assumes
 unit norm; full sweep in [TASKS.md](TASKS.md).
+
+**Hybrid fusion beats both of its inputs because BM25 and dense fail on different queries, not
+because either is weak.** BM25 alone (0.9779) already beats dense alone (0.9652) on this
+jargon-dense, high-lexical-overlap corpus -- BM25's home turf -- so the naive expectation is that
+fusion just interpolates between the two, capping out at BM25's score. It doesn't: the best
+weighted blend (bm25_weight=0.5) reaches 0.9885, above either input, because dense's occasional
+paraphrase/synonymy win still adds signal on top of a BM25-dominant blend. RRF gets most of the
+same gain (0.9821) without needing calibrated scores. Full method comparison, including why
+RRF's rank-only view slightly undershoots tuned weighted fusion, in [TASKS.md](TASKS.md) (2.6).
 
 **Systems numbers are reported alongside quality.** Index build time, index size, p50/p95 query
 latency and cost per 1M embeddings. A model that is 2% better and 5x slower is usually the wrong

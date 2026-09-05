@@ -54,6 +54,20 @@ def bm25_index_size_bytes(index) -> int:
     return len(pickle.dumps(index))
 
 
+def search_bm25_with_scores(index, query_tokens: Sequence[str], k: int) -> list[tuple[int, float]]:
+    """Like search_bm25, but returns (position, raw_bm25_score) pairs instead
+    of bare positions -- needed by rss.fusion.weighted_score_fusion (Task
+    2.6), which combines actual scores rather than just ranks the way
+    reciprocal_rank_fusion does. Same top-k selection as search_bm25, kept as
+    a separate function rather than a `with_scores` flag so search_bm25's
+    return type (and every existing caller) stays untouched."""
+    scores = index.get_scores(list(query_tokens))
+    k = min(k, len(scores))
+    top_idx = np.argpartition(-scores, k - 1)[:k]
+    ordered = top_idx[np.argsort(-scores[top_idx])]
+    return [(int(i), float(scores[i])) for i in ordered]
+
+
 _DISTANCE_MAP = {"cosine": "COSINE", "dot": "DOT", "euclid": "EUCLID"}
 
 
@@ -127,6 +141,19 @@ def search(index: QdrantIndex, query_vector, k: int) -> list[int]:
         limit=k,
     ).points
     return [hit.id for hit in hits]
+
+
+def search_with_scores(index: QdrantIndex, query_vector, k: int) -> list[tuple[int, float]]:
+    """Like search, but returns (point_id, similarity_score) pairs -- needed
+    by rss.fusion.weighted_score_fusion (Task 2.6), the dense-side counterpart
+    to search_bm25_with_scores. Qdrant's score for a cosine-distance
+    collection is the cosine similarity itself, already in [-1, 1]."""
+    hits = index.client.query_points(
+        collection_name=index.collection,
+        query=np.asarray(query_vector, dtype=np.float32).tolist(),
+        limit=k,
+    ).points
+    return [(hit.id, float(hit.score)) for hit in hits]
 
 
 def qdrant_index_size_bytes(path: str) -> int:
