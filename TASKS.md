@@ -296,7 +296,35 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     rather than bare ids) since weighted fusion needs actual scores, not just ranks -- 5 new unit
     tests (97 total now) check they agree with `search_bm25`/`search`'s own ordering and that scores
     come back sorted descending.
-- [ ] **2.7** Systems numbers: index build time, index size, p50/p95 latency, $/1M embeddings
+- [x] **2.7** Systems numbers: index build time, index size, p50/p95 latency, $/1M embeddings
+  - Every number below already appears once, next to the method that produced it, in 2.1-2.6 above;
+    this section just puts them side by side so build-time/size/latency trade-offs are comparable
+    at a glance instead of requiring five separate scrolls.
+
+    | Method | Index build | Index size | Query p50 | Query p95 |
+    |---|---|---|---|---|
+    | BM25 | 0.7s | 24.7MB (pickled, approx.) | 129.6ms* | 187.6ms* |
+    | all-MiniLM-L6-v2 (384d) | 82.0s | 82.7MB | 10.3ms | 13.7ms |
+    | all-mpnet-base-v2 (768d) | 143.7s | 164.7MB | 50.9ms | 79.7ms |
+    | nomic-embed-text-v1.5 (768d) | 90.2s | 164.7MB | 18.6ms | 23.2ms |
+    | nomic @ 256 (truncated) | 80.7s | 82.7MB | 6.0ms | 7.0ms |
+    | nomic @ 64 (truncated) | 73.9s | 21.2MB | 2.3ms | 2.7ms |
+    | Hybrid (BM25 + mpnet, fusion only)† | -- | -- | 0.04ms | 0.07ms |
+
+    \* BM25's own latency is naive per-query Python scoring over `rank_bm25`, not a real ANN index
+    -- a floor for the "no index at all" case, not a fair comparison to the Qdrant rows.
+    † Hybrid needs both first-stage indices already listed above (BM25 + the dense model's own row);
+    the number here is only the added fusion-compute latency, not a new index or an end-to-end
+    query time.
+
+    **$/1M embeddings is deliberately left out.** Computing it honestly needs a real cloud
+    instance's published hourly price multiplied by measured throughput, and the whole discipline
+    this project holds itself to (README: "nothing here is estimated") is about not mixing a real
+    measured number with an assumed one in the same cell -- which instance size, which region,
+    on-demand vs. spot, are all judgment calls this repo isn't set up to defend. What's measured and
+    reportable instead: this dev box got roughly 39 docs/s on `all-MiniLM-L6-v2` and 2.6-3.8 docs/s
+    on the 768d models (see 2.2/2.3) on 4 CPU cores with no GPU -- anyone plugging in their own
+    instance's price can get a real $/1M number from that throughput directly.
 
 ### Phase 2b — Fine-tuning
 - [ ] **2b.1** Fine-tune a sentence-transformer on the domain pairs with `MultipleNegativesRankingLoss`
