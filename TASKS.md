@@ -332,17 +332,56 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] **2b.3** **Question answered: should you train your own embedding model for RAG?**
 
 ### Phase 2c — Reranking
-- [ ] **2c.1** Cross-encoder rerank over top-50 (`bge-reranker-base`)
-  - `rss.rerank.load_reranker`/`rerank` implemented: load once (via `sentence_transformers`
-    `CrossEncoder`, from the local `models/hf/bge-reranker-base` snapshot), then call `rerank` per
-    query -- loading per-query would swamp the added-latency number 2c.2 needs. Caps scoring to the
-    first `top_n` candidates from the first-stage retriever rather than the whole corpus, which is
-    the entire reason reranking is a second stage. 7 unit tests against a fake cross-encoder
-    (ordering, `top_n` capping, empty/single-candidate edges). Smoke-tested against the real
-    `bge-reranker-base`: loads and produces a sensible reordering on a toy 3-candidate example.
-    Not yet run as a full eval (needs a first-stage run's top-50 per query as input) -- pending 2.1's
-    BM25 run's candidates or a dense run once 2.2 finishes.
-- [ ] **2c.2** nDCG@10 before/after, and added p95 latency
+- [x] **2c.1** Cross-encoder rerank over top-50 (`bge-reranker-base`)
+  - `rss.rerank.load_reranker`/`rerank` (load once via `sentence_transformers` `CrossEncoder`, call
+    `rerank` per query -- loading per-query would swamp the added-latency number 2c.2 needs), capped
+    to the first `top_n` candidates from the first-stage retriever. 7 unit tests against a fake
+    cross-encoder (ordering, `top_n` capping, empty/single-candidate edges).
+  - Real cross-encoder scoring is slow enough on CPU (~2s for a 50-candidate query with SHORT toy
+    text, but real arXiv-abstract-length candidates pushed that to ~14s/query once actually run) that
+    this needed the same offload-to-the-user's-own-Mac treatment as the slow dense encoding in
+    2.2/2.3 -- `scripts/eval_rerank.py` is checkpointed/resumable like `eval_dense.py`, ran the first
+    ~8 queries in this dev sandbox before handing the rest to the user's own Terminal.
+  - **A real bug was caught before trusting the first full run's numbers, not after.** That run's
+    "before" (hybrid) score came back nDCG@10=0.9779 -- bit-identical (to ~2e-16 floating-point
+    noise) to plain BM25 alone. Root cause: an earlier killed background attempt at building the
+    dense Qdrant index had left a valid-looking but EMPTY directory (`.lock` + `meta.json`, zero
+    points) on disk, and the script's "reuse the index if the directory already exists" logic
+    checked only path existence, not point count -- so it silently reused an empty collection,
+    the dense side of every fusion contributed nothing, and the "hybrid" ranking collapsed to pure
+    BM25. Fixed by always rebuilding the index fresh (matching `eval_hybrid.py`/`eval_dense.py`'s
+    already-correct pattern) rather than cheaply reusing a directory whose contents were never
+    verified -- rerun confirmed the fix: the corrected "before" score (0.9885) now matches 2.6's own
+    hybrid weighted-fusion number to floating-point noise, as it should.
+- [x] **2c.2** nDCG@10 before/after, and added p95 latency
+  - "Before" is the best first-stage retriever this project has -- hybrid weighted fusion at
+    `bm25_weight=0.5` (2.6's own best, 0.9885 nDCG@10) -- not a weaker baseline, since reranking a
+    weak baseline would overstate the reranker's contribution with more obvious headroom to claim.
+    "After" reranks that same fused ranking's top 50 candidates with `bge-reranker-base` and rescores.
+
+    | | nDCG@10 | Recall@10 | MRR | Added latency (p50 / p95) |
+    |---|---|---|---|---|
+    | Before (hybrid weighted, bm25_weight=0.5) | 0.9885 | 1.0000 | 0.9846 | -- |
+    | After (+ bge-reranker-base rerank) | 0.9815 | 0.9975 | 0.9760 | 3038ms / 3687ms |
+
+    **Finding: reranking made this eval WORSE, and that's a real, reportable result, not a bug to
+    chase.** The before/after gap (-0.0070 nDCG@10, -0.0025 recall@10) is small but consistent
+    across MRR too, and it survived the same fix-the-bug-then-rerun discipline that caught the
+    empty-index issue above -- this isn't measurement noise from a broken pipeline. Two things this
+    corpus makes plausible: first, the "before" baseline is already near the ceiling (recall@10=1.0,
+    nDCG@1=0.9725) -- when the gold document is already in the fused ranking's top couple of
+    positions for nearly every query, a reranker has far more room to accidentally *demote* it than
+    to meaningfully improve on it. Second, `bge-reranker-base` is an off-the-shelf general-purpose
+    reranker, not tuned to this jargon-dense, high-lexical-overlap arXiv corpus -- the fusion
+    baseline it's competing against already combines BM25's exact-term-match strength with dense
+    similarity, tuned via the weight sweep in 2.6, which is a more specialised fit to this eval set
+    than a generic cross-encoder's own notion of relevance. Reranking earns its cost on corpora/query
+    sets where the first-stage retriever's top-k is meaningfully imperfect -- it doesn't automatically
+    help when the first stage is already this strong. Added latency (3.0s p50 for 50 candidates,
+    real abstract-length text) is also the clearest number in this whole project for "reranking is
+    expensive": ~130x the hybrid fusion step's own latency (2.6), which is the real-world tradeoff a
+    production system would be weighing against this eval's -0.0070 nDCG@10, not just an abstract
+    accuracy-vs-latency tradeoff.
 
 ### Phase 2d — Scaling curve
 - [ ] **2d.1** Record index build time, size, p95 latency at 5K / 10K / 20K docs

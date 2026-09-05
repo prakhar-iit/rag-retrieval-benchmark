@@ -58,13 +58,17 @@ scoring latency, not a fair comparison to a real ANN index -- treat them as a fl
 | all-mpnet-base-v2 @ 64 (non-MRL control, truncated) | 0.8457 | 0.9425 | 0.8156 | 21.2MB | 3.1ms |
 | Hybrid RRF (BM25 + all-mpnet-base-v2) | 0.9821 | 1.0000 | 0.9760 | ~189MB† | <1ms‡ |
 | **Hybrid weighted, bm25_weight=0.5 (best overall)** | **0.9885** | **1.0000** | **0.9846** | ~189MB† | <1ms‡ |
-| + cross-encoder rerank | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| + cross-encoder rerank (bge-reranker-base) | 0.9815 | 0.9975 | 0.9760 | (reuses hybrid's indices) | +3038ms† |
 
 † Both first-stage indices (BM25 + the dense Qdrant index) have to exist regardless of fusion
 method -- not an extra index, the sum of the BM25 and all-mpnet-base-v2 rows above.
 ‡ Fusion compute itself (combining two 100-candidate lists) is sub-millisecond; total hybrid query
 latency is dominated by running both first-stage retrievers (see their own rows above), not
 separately re-measured end-to-end here -- see [TASKS.md](TASKS.md) (2.6).
+† Cross-encoder rerank is scored on top of the hybrid weighted-fusion ranking (bm25_weight=0.5,
+the best first-stage result from 2.6), not a fresh index -- the added latency is the rerank pass
+itself (p50 3038ms, scoring 50 real abstract-length candidates per query), on top of whatever the
+first-stage retrievers already cost.
 
 Full 5-point sweep (768/512/256/128/64) for both models is in [TASKS.md](TASKS.md) (2.5) --
 the table above shows only the endpoints plus the 256-dim midpoint the config calls out as the
@@ -93,6 +97,16 @@ weighted blend (bm25_weight=0.5) reaches 0.9885, above either input, because den
 paraphrase/synonymy win still adds signal on top of a BM25-dominant blend. RRF gets most of the
 same gain (0.9821) without needing calibrated scores. Full method comparison, including why
 RRF's rank-only view slightly undershoots tuned weighted fusion, in [TASKS.md](TASKS.md) (2.6).
+
+**Reranking made this eval WORSE, not better -- and that's a real finding, not a bug.** Reranking
+the best hybrid ranking (0.9885 nDCG@10) with `bge-reranker-base` over its top-50 candidates drops
+to 0.9815. The baseline is already near-ceiling (recall@10=1.0), so a reranker has more room to
+demote an already-correct top result than to improve on it, and a general-purpose cross-encoder
+isn't specially tuned to this jargon-dense corpus the way the fusion weight sweep (2.6) is. Caught
+via the same discipline as the nomic prefix bug (2.3): a first run of this eval came back
+suspicious (bit-identical to plain BM25, not a real hybrid number) because of a stale empty index
+being silently reused -- fixed and rerun before trusting the number. Full story in
+[TASKS.md](TASKS.md) (2c.2).
 
 **Systems numbers are reported alongside quality.** Index build time, index size, p50/p95 query
 latency and cost per 1M embeddings. A model that is 2% better and 5x slower is usually the wrong
