@@ -198,16 +198,19 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     correct usage, **`all-mpnet-base-v2` (0.9652) is the best dense model on this eval, not nomic** --
     the MRL truncation sweep (2.5) uses nomic anyway since it's the only MRL-capable model in the
     lineup, but the "best dense" designation for hybrid fusion (2.6) should be `all-mpnet-base-v2`.
-- [ ] **2.4** Index in Qdrant (not only FAISS — the claim is *vector DB*)
-  - Infra done ahead of the vectors themselves, as prep while blocked on HF model access (below):
-    `docker` isn't installed on this dev machine, so `rss.index.build_qdrant`/`search` use Qdrant's
+- [x] **2.4** Index in Qdrant (not only FAISS — the claim is *vector DB*)
+  - `docker` isn't installed on this dev machine, so `rss.index.build_qdrant`/`search` use Qdrant's
     embedded/local mode (`QdrantClient(path=...)`) instead of the config's `index.url` server target
-    -- same client API and on-disk collection format, no server process. Confirmed working end-to-end
-    (create collection, upsert, query) and covered by 7 unit tests in `tests/test_index.py`
-    (exact-match retrieval, k-limiting, missing payloads, rebuild-at-same-path semantics, on-disk size,
-    deletion). `configs/default.yaml` gains `index.path`; `index.url` is kept as documentation of the
-    real deployment target. Actually indexing the corpus is still blocked on the dense vectors
-    themselves (2.2/2.3) — see the HF-access note there.
+    -- same client API and on-disk collection format, no server process. Covered by 7 unit tests in
+    `tests/test_index.py` (exact-match retrieval, k-limiting, missing payloads, rebuild-at-same-path
+    semantics, on-disk size, deletion). `configs/default.yaml` gains `index.path`; `index.url` is kept
+    as documentation of the real (docker-based) deployment target.
+  - Now actually indexing real vectors, not just the toy fixtures: all three dense models from 2.2/2.3
+    each got a real per-model Qdrant collection built via `scripts/eval_dense.py` (`all-MiniLM-L6-v2`
+    82.7MB/82.1s build, `all-mpnet-base-v2` 164.7MB/143.7s, `nomic-embed-text-v1.5` 164.7MB/90.2s --
+    the latter two's byte-identical size is expected, same 20K vectors at 768d either way). Query
+    latency (10-80ms depending on model) came out roughly 2-12x lower than BM25's naive Python
+    scoring (130/188ms p50/p95), the real payoff of an actual ANN index vs brute-force/linear scoring.
 - [ ] **2.5** **MRL truncation sweep** 768 -> 512 -> 256 -> 128 -> 64
   - [ ] Same sweep on non-MRL `all-mpnet-base-v2` as the control
   - [ ] ⚠️ Renormalise after slicing; assert unit norm in the harness
