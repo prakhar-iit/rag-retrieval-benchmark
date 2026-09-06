@@ -3,9 +3,13 @@
 Benchmarking retrieval approaches from BM25 and Word2Vec to modern embeddings, Matryoshka
 truncation and hybrid fusion — with topic-level failure diagnostics, on arXiv ML abstracts.
 
-> **Status: in progress.** Scaffold and roadmap are in place; results are not in yet.
-> See [TASKS.md](TASKS.md) for what is done and what is next. Numbers below appear as
-> `[TBD]` until measured — nothing here is estimated.
+> **Status: Phase 0-2 complete.** Corpus, eval set, and the full measurement sweep (BM25,
+> Word2Vec, sentence-transformers, MRL truncation, hybrid fusion, cross-encoder reranking, and
+> latency/index-size scaling) are done — every number in the Results table below is measured, not
+> estimated, except the handful still marked `[TBD]` (Word2Vec index size/latency, explained in the
+> note above that table). **Phase 3 (topic-modelling failure diagnostics) and Phase 4 (an
+> end-to-end RAG layer) are not started** — see [TASKS.md](TASKS.md) for the full breakdown of
+> what's done and what's next.
 
 ## Why
 
@@ -21,7 +25,8 @@ explains where the resulting system fails.
 **Measurement** — how good is retrieval, across three decades of approaches?
 **Diagnosis** — where and why does it fail?
 
-Most public work does one or the other.
+Most public work does one or the other. Measurement is done (Phase 0-2, see Results below);
+diagnosis (Phase 3, topic-level failure clustering) hasn't been built yet.
 
 ## The stack under test
 
